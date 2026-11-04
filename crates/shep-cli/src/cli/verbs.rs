@@ -153,8 +153,7 @@ pub enum Commands {
     /// The swaps themselves are reported on the bus either way, under
     /// process.reload, process.reloaded and process.reload_abandoned.
     Reload(SelectorArgs),
-    /// Delete one or more sheep, or one or more dogs, from the flock, for
-    /// good.
+    /// Delete one or more sheep or dogs, for good
     ///
     /// A dog's name takes the dog's path: it is stopped, deregistered, and
     /// struck from `[daemon] enabled_dogs`, `[daemon] adopted_dogs` and
@@ -177,9 +176,9 @@ pub enum Commands {
     /// delete` on the host. A built-in dog is left to the host's shepherd,
     /// which refuses it as above.
     Delete(SelectorArgs),
-    /// Set how many instances one app runs — the stocking rate.
+    /// Set how many instances one app runs
     ///
-    /// An absolute count, not a change: `shep stock web 4` means web has four
+    /// This is the stocking rate. An absolute count, not a change: `shep stock web 4` means web has four
     /// instances afterwards, whatever it had before. There is no +N/-N form —
     /// run it twice and get the same flock.
     ///
@@ -210,33 +209,33 @@ pub enum Commands {
     /// `--format json` with a hosts list needs `--host`.
     #[command(visible_aliases = ["list", "ls"])]
     Flock(FlockArgs),
-    /// List the dogs, and nothing else. `--available` lists the community
-    /// index of dogs you could adopt instead of the ones this shepherd is
-    /// running. The listing shows each dog's SOURCE (`built-in`, `installed`,
-    /// `installed, community` or `adopted`) and VERSION, with `→ <new>` when
-    /// the cached index holds a newer one; the index is never fetched for it.
-    /// `grant` and `revoke` change one permission of a dog.
-    Dogs(DogsArgs),
-    /// Turn a sheep or a dog back on. A sheep named here has its disabled
-    /// mark cleared and is started; a dog is written into `[daemon]
-    /// enabled_dogs` in `shep.toml` and started now if a shepherd is running.
+    /// List the dogs, and nothing else
     ///
+    /// `--available` lists the community index of dogs you could adopt
+    /// instead of this shepherd's own. The listing shows each dog's SOURCE
+    /// (`built-in`, `installed`, `installed, community` or `adopted`) and
+    /// VERSION, with `→ <new>` when the cached index holds a newer one, never
+    /// fetched for it. `grant` and `revoke` change one permission of a dog.
+    Dogs(DogsArgs),
+    /// Turn a sheep or a dog back on
+    ///
+    /// A sheep named here has its disabled mark cleared and is started; a dog
+    /// is written into `[daemon] enabled_dogs` in `shep.toml` and started now
+    /// if a shepherd is running.
     /// A sheep needs a running shepherd, and takes a name, a `fold:`, a
     /// `/regex/` or `all`. A sweep reaches only disabled sheep and never a
     /// dog, so `shep enable all` undoes a batch of disables. An id or
     /// `name:slot` is refused, since the mark belongs to the whole app. A
     /// sheep that is not disabled is left alone and the verb says so. A dog
     /// is named, and writes the config either way and exits 0 with no
-    /// shepherd running -- it comes up with the next one. `shep muster` is
-    /// the only verb that autostarts a shepherd; this is not it. A name that
-    /// is neither a sheep nor a dog exits 3 and lists the dogs, or 5 with no
-    /// shepherd running.
+    /// shepherd running. A name that is neither a sheep nor a dog exits 3
+    /// and lists the dogs, or 5 with no shepherd running.
     Enable(EnableArgs),
-    /// Stop a sheep and refuse to start it again until `shep enable`, or turn
-    /// a dog off. A dog is removed from `[daemon] enabled_dogs` and stopped
-    /// now if a shepherd is running, and `shep flock` still lists it,
-    /// disabled.
+    /// Turn a sheep or a dog off, until `shep enable`
     ///
+    /// A sheep is stopped and refused a start. A dog is removed from `[daemon]
+    /// enabled_dogs` and stopped now if a shepherd is running, and `shep flock`
+    /// still lists it, disabled.
     /// A sheep needs a running shepherd, and takes a name, a `fold:`, a
     /// `/regex/` or `all`; a sweep never reaches a dog. An id or `name:slot`
     /// is refused, since the mark belongs to the whole app. While it is set,
@@ -246,15 +245,15 @@ pub enum Commands {
     /// own configuration in `dogs.toml` survives a disable/enable cycle;
     /// `shep delete` forgets the adoption as well.
     Disable(DisableArgs),
-    /// Install a dog from the community index, then adopt and enable it.
-    /// With no name, lists the index.
+    /// Install a dog from the community index
     ///
+    /// Adopts and enables it. With no name, lists the index.
     /// Downloads the prebuilt binary the index hashes for this target, and
     /// refuses it on a sha256 mismatch. Otherwise, or with `--cargo`, builds
     /// the approved version with `cargo install --locked`. Then it asks
     /// `shep adopt`'s grant question. Any other row exits 1.
     Install(InstallArgs),
-    /// Upgrade an installed dog to what its receipt follows, with a way back.
+    /// Upgrade an installed dog, with a way back
     ///
     /// An index install moves to the index's version and a ref install
     /// rebuilds its ref at the newest commit. `--ref` switches ref,
@@ -262,15 +261,14 @@ pub enum Commands {
     /// the install the last upgrade replaced. Each upgrade restarts the dog,
     /// and a permission the new build declares waits for review.
     Upgrade(UpgradeArgs),
-    /// Vet a binary shep has never seen and register it as a dog: writes
-    /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,
-    /// and starts it now if a shepherd is running.
+    /// Vet a binary and register it as a dog
     ///
+    /// Writes `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in
+    /// `shep.toml`, and starts it now if a shepherd is running.
     /// A binary whose `--version` answer carries `shep-channel: true` is
     /// also written to `[daemon] channel_dogs`, and runs with the shepherd
     /// channel: `shep trigger` reaches it, and a stop is a message rather
     /// than a signal. The dog asks; there is no flag for it.
-    ///
     /// The path can be given as-is, with a leading `~/`, or as a bare name
     /// already on `$PATH` (`cargo install` puts one there). Refuses, before
     /// touching the config at all, a path that resolves to nothing that
@@ -303,10 +301,9 @@ pub enum Commands {
     /// With the `vcs` feature, the revision the sheep's `cwd` is checked out
     /// on now is shown under the table, not necessarily the one it started from.
     Describe(SelectorArgs),
-    /// Send a named action to matched sheep and report what each app
-    /// answers.
+    /// Send a named action to matched sheep
     ///
-    /// Reaches an app over its shepherd channel — the fd-3 pipe the daemon
+    /// Reports what each app answers. Reaches an app over its shepherd channel — the fd-3 pipe the daemon
     /// opens when the app's Flockfile sets `channel = true`. `wait_ready`
     /// and `shutdown_with_message` both imply the same channel, so either
     /// one of the three is enough; a sheep with none of them answers a
@@ -390,7 +387,7 @@ pub enum Commands {
     Whistle,
     /// Reopen log files after an external rotator has renamed them.
     Reopen(ReopenArgs),
-    /// Empty the log files of one or more sheep, or the shepherd's own.
+    /// Empty the log files of sheep, or the shepherd's own
     Flush(FlushArgs),
     /// Show the alert history: `barks.jsonl`, newest last.
     ///
@@ -400,9 +397,9 @@ pub enum Commands {
     /// Same precedent as `shep flush --daemon`, which also works on files
     /// rather than through the socket.
     Barks(BarksArgs),
-    /// Read and write the key/value store: `shep kv get`, `shep kv set`, `shep kv unset`.
+    /// Read and write the key/value store
     ///
-    /// Reads and writes `$SHEP_HOME/kv.json` directly and never connects to the
+    /// The verbs are `shep kv get`, `shep kv set` and `shep kv unset`. Reads and writes `$SHEP_HOME/kv.json` directly and never connects to the
     /// shepherd: the store is for ad-hoc notes and dog settings, and it has to
     /// work while nothing is running, exactly as `shep enable` does.
     ///
@@ -410,7 +407,7 @@ pub enum Commands {
     /// starting with a dot. A dot is part of the name. `bark.cooldown` is one
     /// key, not a path into anything.
     Kv(KvArgs),
-    /// Change one setting of a sheep or a dog: `shep set <address> <value>`.
+    /// Change one setting of a sheep or a dog
     ///
     /// The address is `shep get`'s and `shep copy`'s: a sheep's own field, a
     /// dog's table on that sheep, or the dog's own section of `dogs.toml`.
@@ -434,9 +431,9 @@ pub enum Commands {
     ///
     /// The key/value store this verb used to write lives at `shep kv set`.
     Set(SetArgs),
-    /// Drop an override, or remove a dog's key, so what was there before applies.
+    /// Drop an override, or remove a dog's key
     ///
-    /// The address is `shep set`'s, and `<dog>.defaults[.<key>]` is refused as it is
+    /// What was there before then applies. The address is `shep set`'s, and `<dog>.defaults[.<key>]` is refused as it is
     /// there. On a sheep's field it drops the override you set, so the
     /// Flockfile's value returns in `shep get` and the running config. A field with
     /// no override is refused: it already holds the Flockfile's value. On a key of
@@ -479,11 +476,10 @@ pub enum Commands {
     /// `~/.ssh/config` aliases, users, ports and ProxyJump all apply. Reads
     /// and writes that file directly and never connects to a machine.
     Host(HostArgs),
-    /// Copy one setting, one dog's table, or a sheep's env from one sheep onto
-    /// another.
+    /// Copy settings from one sheep onto another
     ///
+    /// Copies one setting, one dog's table, or a sheep's env.
     /// Each side is an address: a sheep name, then a path in its config.
-    ///
     /// `shep copy web.restart_delay api.restart_delay` copies one field.
     /// `shep copy web.dogs.kelpie api.dogs.kelpie` copies a dog's whole table.
     /// `shep copy web.dogs.kelpie.rulings api.dogs.kelpie.rulings` copies one
@@ -556,8 +552,9 @@ pub enum Commands {
     /// The shepherd already rewrites the roll after every change. This is for
     /// seeing it on disk before a reboot rather than trusting that it is.
     Save,
-    /// Assemble the flock from the muster roll, starting the shepherd first
-    /// if none is running.
+    /// Assemble the flock from the muster roll
+    ///
+    /// Starts the shepherd first if none is running.
     // Hidden alias `resurrect`: `alias`, not `visible_aliases`, so `--help`
     // does not teach it. A `//`, not `///`, because the doc above is this
     // verb's help text and naming the alias there would defeat the point.
@@ -565,9 +562,9 @@ pub enum Commands {
     Muster,
     /// Write a commented Flockfile to start from
     Init(InitArgs),
-    /// Boot a shepherd in this process, run one Flockfile's flock in the
-    /// foreground, and exit once nothing is left online.
+    /// Run one Flockfile's flock in the foreground
     ///
+    /// Boots a shepherd in this process and exits once nothing is left online.
     /// Meant for a container: no daemonization, no re-exec, no saved muster
     /// roll — `--no-restore` is always on, because a container starts from
     /// its Flockfile every time, never from a roll left on the image by a
@@ -587,21 +584,20 @@ pub enum Commands {
     /// reading the exit status can tell "finished" from "died" and restart
     /// the container only for the second.
     Runtime(RuntimeArgs),
-    /// Run one Flockfile's flock in an isolated, throwaway foreground
-    /// session: `$SHEP_DEV_HOME` (default `~/.shep-dev`), forced `watch =
-    /// true` on every app, and a full stop-and-delete teardown when it ends.
+    /// Run one Flockfile's flock in a throwaway session
     ///
-    /// **`--home` and `$SHEP_HOME` are ignored.** Isolation is the whole
+    /// The session is isolated: `$SHEP_DEV_HOME` (default `~/.shep-dev`),
+    /// forced `watch = true` on every app, and a full stop-and-delete teardown
+    /// when it ends. **`--home` and `$SHEP_HOME` are ignored.** Isolation is the whole
     /// feature: an operator who exports `$SHEP_HOME` for their real flock
     /// gets a stderr notice rather than a `dev` session that shares it and
-    /// silently forces `watch = true` onto production apps.
-    ///
-    /// Ends the moment the flock empties or this process is signalled —
-    /// whichever comes first — and either way leaves nothing running and no
-    /// shepherd behind. A `shep dev` that leaked a supervisor would stop
-    /// being trusted.
+    /// silently forces `watch = true` onto production apps. Ends the moment
+    /// the flock empties or this process is signalled, whichever comes first,
+    /// and leaves nothing running and no shepherd behind.
     Dev(DevArgs),
-    /// Read somebody else's config into shep: a pm2 dump, or a `.env`.
+    /// Read somebody else's config into shep
+    ///
+    /// Takes a pm2 dump, or a `.env`.
     Import(ImportArgs),
     /// Install an init unit so the shepherd starts at boot.
     ///
@@ -633,10 +629,10 @@ logon trigger instead: the flock comes back at sign-in, not at boot. It runs as 
 password and needs no elevation. `--user` naming anyone else, and `--init`, are refused there."
     )]
     Startup(StartupArgs),
-    /// Disable and remove whichever unit `startup` installed — systemd,
-    /// openrc, launchd, or a BSD `rc.d` script.
+    /// Remove the unit `startup` installed
     ///
-    /// On Unix this needs root under the same rule: without it, prints the
+    /// Disables and removes whichever one: systemd, openrc, launchd, or a BSD
+    /// `rc.d` script. On Unix this needs root under the same rule: without it, prints the
     /// command to run and exits non-zero. A unit that is not there is reported
     /// absent rather than failing.
     #[command(
@@ -649,8 +645,9 @@ running; `shep kill` stops it. `--user` naming anyone else, and `--init`, are re
     /// Static only: sheep names, fold names and other daemon-side
     /// identifiers are never completed.
     Completions(CompletionArgs),
-    /// Print the welcome: the sheep, the quick start, and three dogs to install.
+    /// Print the welcome and the quick start
     ///
+    /// It shows the sheep, the quick start, and three dogs to install.
     /// The same text a fresh `$SHEP_HOME` prints once on its own. Here it is
     /// the command's output rather than a diagnostic, so it goes to stdout.
     Welcome,
