@@ -1,4 +1,4 @@
-use shep_core::dogs::pane::{Pane, Row};
+use shep_core::dogs::pane::{Destructive, Pane, Row};
 
 use super::*;
 use crate::lookout::pane::{DeclaredPane, DogStatus};
@@ -130,4 +130,99 @@ fn a_tab_scrolls_past_its_cursor_only_once_it_knows_its_room() {
         None,
         "the top is where the window follows from"
     );
+}
+
+fn declared(names: &[&str]) -> Vec<String> {
+    names.iter().map(|name| (*name).to_owned()).collect()
+}
+
+fn letters(pane: &Pane, names: &[&str]) -> Vec<Option<char>> {
+    keyed(pane, &declared(names))
+        .iter()
+        .map(|key| key.letter)
+        .collect()
+}
+
+#[test]
+fn letters_are_the_first_free_letter_of_each_label_in_declared_order() {
+    let pane = Pane::new()
+        .table("leases", ["LEASE"], rows(&["a"]))
+        .row_action("revoke", "revoke lease", Destructive::Yes)
+        .row_action("renew", "renew lease", Destructive::No)
+        .action("pause", "pause the board", Destructive::No);
+
+    let keys = keyed(&pane, &declared(&["revoke", "renew", "pause"]));
+
+    let shown: Vec<_> = keys
+        .iter()
+        .map(|key| (key.letter, key.action.action.as_str(), key.rows.is_some()))
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            (Some('r'), "revoke", true),
+            // `r` is taken, `e` is the label's next letter.
+            (Some('e'), "renew", true),
+            (Some('p'), "pause", false),
+        ]
+    );
+}
+
+#[test]
+fn a_reserved_letter_moves_to_the_next_letter_of_the_label() {
+    let pane = Pane::new()
+        .action("go", "go", Destructive::No)
+        .action("kill", "kill", Destructive::No)
+        .action("quiet", "quiet", Destructive::No)
+        .action("jump", "jump", Destructive::No);
+
+    // `g`, `k`, `q` and `j` are lookout's own, and `u` goes to "quiet" first.
+    assert_eq!(
+        letters(&pane, &["go", "kill", "quiet", "jump"]),
+        [Some('o'), Some('i'), Some('u'), Some('m')]
+    );
+}
+
+#[test]
+fn a_label_with_no_free_letter_takes_the_first_free_letter_from_a_to_z() {
+    let pane = Pane::new()
+        .action("a", "a", Destructive::No)
+        .action("again", "aa", Destructive::No)
+        .action("jk", "jk", Destructive::No);
+
+    // `a` is taken, so "aa" has none of its own; "jk" has only reserved ones.
+    assert_eq!(
+        letters(&pane, &["a", "again", "jk"]),
+        [Some('a'), Some('b'), Some('c')]
+    );
+}
+
+#[test]
+fn an_action_the_manifest_lacks_has_no_letter_and_takes_none() {
+    let pane = Pane::new()
+        .action("ghost", "reap ghosts", Destructive::No)
+        .action("reap", "reap", Destructive::No);
+
+    assert_eq!(letters(&pane, &["reap"]), [None, Some('r')]);
+}
+
+#[test]
+fn two_panes_assign_their_letters_independently() {
+    let first = Pane::new().action("run", "run", Destructive::No);
+    let second = Pane::new().action("run", "run", Destructive::No);
+
+    assert_eq!(letters(&first, &["run"]), letters(&second, &["run"]));
+    assert_eq!(letters(&first, &["run"]), [Some('r')]);
+}
+
+#[test]
+fn a_row_action_covers_the_rows_of_its_own_table() {
+    let pane = Pane::new()
+        .table("models", ["MODEL"], rows(&["a", "b"]))
+        .table("leases", ["LEASE"], rows(&["c"]))
+        .row_action("revoke", "revoke", Destructive::No);
+
+    let keys = keyed(&pane, &declared(&["revoke"]));
+
+    assert_eq!(keys[0].rows, Some(2..3));
 }

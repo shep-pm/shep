@@ -5,7 +5,9 @@
 //! row, or with no rows at all, the same keys scroll the tab a line at a time,
 //! so a section no row can reach is still read.
 
-use shep_core::dogs::pane::{Pane, Section};
+use core::ops::Range;
+
+use shep_core::dogs::pane::{Pane, PaneAction, Row, Section};
 
 #[cfg(test)]
 mod tests;
@@ -78,6 +80,82 @@ pub(super) fn layout(pane: &Pane) -> Layout {
         }
     }
     at
+}
+
+/// The letters lookout answers itself on every tab, so no action takes one.
+const RESERVED: [char; 4] = ['q', 'j', 'k', 'g'];
+
+/// One action of a pane and the letter that runs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::lookout) struct PaneKey {
+    /// The letter that runs it. [`None`] for an action the manifest does not
+    /// declare, or when all 22 free letters are taken.
+    pub(in crate::lookout) letter: Option<char>,
+    /// The action as the dog declared it.
+    pub(in crate::lookout) action: PaneAction,
+    /// The cursor positions of the rows it runs on, or [`None`] for a pane
+    /// action.
+    pub(in crate::lookout) rows: Option<Range<usize>>,
+}
+
+/// The actions of `pane` in declared order, each table's row actions in the
+/// order of the sections, then the pane's own, with their letters.
+///
+/// An action takes the first free letter of its label, else the first free
+/// one from `a` to `z`. A letter is free when no earlier action took it and
+/// it is not [`RESERVED`]. An action absent from `declared` takes none.
+pub(in crate::lookout) fn keyed(pane: &Pane, declared: &[String]) -> Vec<PaneKey> {
+    let mut found = Vec::new();
+    let mut first_row = 0;
+    for section in &pane.sections {
+        if let Section::Table(table) = section {
+            let rows = first_row..first_row + table.rows.len();
+            first_row = rows.end;
+            for action in &table.row_actions {
+                found.push((action, Some(rows.clone())));
+            }
+        }
+    }
+    found.extend(pane.actions.iter().map(|action| (action, None)));
+
+    let mut taken = Vec::new();
+    found
+        .into_iter()
+        .map(|(action, rows)| {
+            let letter = declared
+                .contains(&action.action)
+                .then(|| free_letter(&action.label, &taken))
+                .flatten();
+            taken.extend(letter);
+            PaneKey {
+                letter,
+                action: action.clone(),
+                rows,
+            }
+        })
+        .collect()
+}
+
+fn free_letter(label: &str, taken: &[char]) -> Option<char> {
+    let free = |letter: &char| !RESERVED.contains(letter) && !taken.contains(letter);
+    label
+        .chars()
+        .map(|letter| letter.to_ascii_lowercase())
+        .filter(char::is_ascii_lowercase)
+        .find(free)
+        .or_else(|| ('a'..='z').find(free))
+}
+
+/// The row at cursor position `cursor`, counted over every table in order.
+pub(in crate::lookout) fn row_at(pane: &Pane, cursor: usize) -> Option<&Row> {
+    pane.sections
+        .iter()
+        .filter_map(|section| match section {
+            Section::Table(table) => Some(table.rows.iter()),
+            _fields_or_unknown => None,
+        })
+        .flatten()
+        .nth(cursor)
 }
 
 /// The first body line a window of `room` lines shows so the cursor's line is
