@@ -18,10 +18,11 @@ use crate::commands::dogs::stub_reach;
 use crate::commands::dogs::{Job, Progress, Prompt, Reach, Step, run};
 use crate::exit::ExitCode;
 
+mod actions;
 #[cfg(test)]
 mod tests;
 
-/// How long `installed <name>` stays on the bar after a job lands.
+/// How long `installed <name>` and its kin stay on the bar after a job lands.
 ///
 /// Long enough to read once after the bar has gone back to the key hint, and
 /// short enough to be gone before the next `i` reopens the catalogue.
@@ -206,6 +207,8 @@ pub(crate) enum DogJob {
     },
     /// A job landed and the bar is still saying so.
     Done {
+        /// What was done to it, past tense.
+        verb: &'static str,
         /// The dog.
         name: String,
         /// The tick instant it landed at.
@@ -229,7 +232,7 @@ impl DogJob {
                 step_word(*step),
                 elapsed.as_secs()
             )),
-            Self::Done { name, .. } => Some(format!("installed {name}")),
+            Self::Done { verb, name, .. } => Some(format!("{verb} {name}")),
         }
     }
 
@@ -287,6 +290,15 @@ fn job_word(job: &Job) -> &'static str {
     }
 }
 
+/// The status bar's word for what a landed job did to the dog.
+fn done_word(job: &Job) -> &'static str {
+    match job {
+        Job::Install { .. } => "installed",
+        Job::Upgrade { .. } => "upgraded",
+        Job::Delete { .. } => "deleted",
+    }
+}
+
 /// The status bar's word for one step, and for the gap before the first one
 /// is reported.
 fn step_word(step: Option<Step>) -> &'static str {
@@ -299,13 +311,6 @@ fn step_word(step: Option<Step>) -> &'static str {
 }
 
 impl App {
-    /// `shep install <adopt_as>`, from `Enter` on a catalogue entry.
-    pub(crate) fn start_install(&mut self, adopt_as: &str) -> Effect {
-        self.start_job(Job::Install {
-            adopt_as: adopt_as.to_owned(),
-        })
-    }
-
     /// Starts `job`, or says why it will not start now.
     ///
     /// Refused with a notice when the control gate is closed, and with a
@@ -337,15 +342,6 @@ impl App {
             grants: HashMap::new(),
         };
         Effect::StartDogJob { job, authority }
-    }
-
-    /// Whether `row` has an install action here: the index names a source
-    /// shep can build, nothing is installed under that name yet, and the
-    /// gate is open.
-    pub(crate) fn can_install(&self, row: &CatalogueRow) -> bool {
-        row.state == DogState::NotInstalled
-            && row.dog.is_installable()
-            && WriteAuthority::granted(self).is_some()
     }
 
     /// `Msg::DogStep`'s arm: the bar's step word moves.
@@ -390,7 +386,7 @@ impl App {
     }
 
     /// `Msg::DogJobDone`'s arm: a success clears the running item, shows
-    /// `installed <name>`, and re-reads the rows so STATE and VERSION catch
+    /// `<verb>ed <name>`, and re-reads the rows so STATE and VERSION catch
     /// up. A failure opens a modal with what the installer printed.
     pub(super) fn on_dog_job_done(&mut self, name: &str, ok: bool, output: String) -> Effect {
         let DogJob::Running { job, .. } = &self.dog_job else {
@@ -399,9 +395,10 @@ impl App {
         if job.name() != name {
             return Effect::None;
         }
-        let verb = job_word(job).to_owned();
+        let (verb, done) = (job_word(job).to_owned(), done_word(job));
         self.dog_job = if ok {
             DogJob::Done {
+                verb: done,
                 name: name.to_owned(),
                 at: self.now,
             }
@@ -446,7 +443,7 @@ impl App {
         if self.dog_job.holds(tag) {
             return Some(Effect::ModalAnswered { tag, yes });
         }
-        None
+        self.on_delete_answer(tag, yes)
     }
 
     /// Drops every grant reply the running job holds, which is what releases a

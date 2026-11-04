@@ -58,6 +58,7 @@ impl App {
             catalogue: Vec::new(),
             dog_job: DogJob::Idle,
             dog_quit: None,
+            dog_delete: None,
             next_modal_tag: 0,
         }
     }
