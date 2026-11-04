@@ -27,7 +27,7 @@ use super::scroll::Attempt;
 use super::status::key_hint::{editor_hint, editor_label, focused_field};
 use super::status::status_layout::TEXT_ENTRY_HINT;
 
-use dogs::{DOGS_CAPTION, browse_dogs_line, dog_header_line};
+use dogs::{DOGS_CAPTION, available_dog_line, browse_dogs_line, dog_header_line};
 use tree::tree_line;
 
 /// The width the rows themselves are laid out in: the terminal minus
@@ -106,6 +106,15 @@ fn cursor_only(
                 palette,
             ));
         }
+        Some(SettingsRow::AvailableDog(index)) => {
+            lines.push(available_dog_line(
+                settings,
+                *index,
+                true,
+                table_width,
+                palette,
+            ));
+        }
         Some(SettingsRow::BrowseDogs) => {
             lines.push(browse_dogs_line(true, table_width, palette));
         }
@@ -154,7 +163,12 @@ fn body_from(
     // line apiece.
     let tree_len = rows
         .iter()
-        .take_while(|row| !matches!(row, SettingsRow::Dog(_) | SettingsRow::BrowseDogs))
+        .take_while(|row| {
+            !matches!(
+                row,
+                SettingsRow::Dog(_) | SettingsRow::AvailableDog(_) | SettingsRow::BrowseDogs
+            )
+        })
         .count();
 
     for (index, row) in rows.iter().copied().enumerate().take(tree_len) {
@@ -204,6 +218,9 @@ fn body_from(
             lines.push(match row {
                 SettingsRow::Dog(dog) => {
                     dog_header_line(app, settings, dog, selected, table_width, palette)
+                }
+                SettingsRow::AvailableDog(index) => {
+                    available_dog_line(settings, index, selected, table_width, palette)
                 }
                 SettingsRow::BrowseDogs => browse_dogs_line(selected, table_width, palette),
                 // A dog's own keys, its grants checklist and its config tree

@@ -405,7 +405,10 @@ export const BUDGETS: Record<string, number> = {
   // Raised again, to 3222, on #1494 for the sentence naming the `browse dogs`
   // row.
   //
-  // Raised from 3222 on 2026-11-04 for "The dog catalogue": the list, the
+  // Raised again, to 3251, on #1500 for the greyed rows of index dogs this
+  // machine lacks, which no other page names.
+  //
+  // Raised from 3251 on 2026-11-04 for "The dog catalogue": the list, the
   // entry, what an entry says about permissions, the `i` key and the
   // `shep lookout catalogue` form are all things an operator sees or types,
   // so the page owes them a section (#1499).

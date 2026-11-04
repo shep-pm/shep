@@ -11,7 +11,7 @@
 
 use ratatui::text::{Line, Span};
 
-use super::super::super::app::{App, DogTree, Settings};
+use super::super::super::app::{App, DogState, DogTree, Settings};
 use super::super::super::theme::Palette;
 use super::super::flock::{fit, mark};
 use super::super::pane::open_glyph;
@@ -151,6 +151,47 @@ fn running_of(app: &App, name: &str) -> Option<String> {
         .into_iter()
         .find(|row| row.info.dog.is_some() && row.info.name == name)
         .map(|row| Reported::of(row.info.status, row.info.handshook).word())
+}
+
+/// One index dog this machine lacks, [`SettingsRow::AvailableDog`]: its name,
+/// `not installed` and its category, fitted to `width`, a BODY width.
+///
+/// Muted, and said in words too, so a terminal with no colour still tells it
+/// from an installed dog's row. A narrow terminal cuts the name first.
+///
+/// [`SettingsRow::AvailableDog`]: super::super::super::app::SettingsRow::AvailableDog
+pub(super) fn available_dog_line(
+    settings: &Settings,
+    index: usize,
+    selected: bool,
+    width: u16,
+    palette: Palette,
+) -> Line<'static> {
+    let Some(row) = settings.available().get(index) else {
+        return Line::default();
+    };
+    let chars = |text: &str| u16::try_from(text.chars().count()).unwrap_or(u16::MAX);
+    // Names line up across the dogs this screen lists, and give way before
+    // the state and the category do.
+    let longest = settings
+        .available()
+        .iter()
+        .map(|row| chars(&row.dog.name))
+        .max()
+        .unwrap_or(0);
+    let state = DogState::NotInstalled.as_str();
+    let tail = format!("{state}  {}", row.dog.category);
+    // What is left after the mark, the two gaps and the tail: the name pays
+    // for a narrow terminal, and the state and category are never cut for it.
+    let name_width = longest.min(width.saturating_sub(2 + 2 + chars(&tail)));
+    let body = format!("{}  {tail}", fit(&row.dog.name, name_width));
+    // `mark` spends two columns of the width, so the rest is fitted to what
+    // is left.
+    let room = width.saturating_sub(2);
+    Line::from(vec![
+        Span::raw(format!("{} ", mark(selected))),
+        Span::styled(fit(&body, room).trim_end().to_owned(), palette.muted()),
+    ])
 }
 
 /// The row that ends the section, [`SettingsRow::BrowseDogs`]: its label and
@@ -302,7 +343,7 @@ mod tests {
                 version: Some("0.2.4".to_owned()),
                 newer: Some("0.3.0".to_owned()),
             },
-            ..DogView::adopted("log-rotate", true, std::path::Path::new("/opt/log-rotate"))
+            ..DogView::adopted("rotate", true, std::path::Path::new("/opt/rotate"))
         };
         let line = header_of(installed, 120);
         assert!(line.contains("installed, community"), "{line:?}");
@@ -430,5 +471,105 @@ mod tests {
             .map(|s| s.content.as_ref())
             .collect::<String>();
         assert!(line.contains("silent"), "{line:?}");
+    }
+
+    fn available_row(app: &App, index: usize, width: u16, palette: Palette) -> Line<'static> {
+        available_dog_line(app.settings().unwrap(), index, false, width, palette)
+    }
+
+    fn text_of(line: &Line<'_>) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    /// Greyed is a colour, and a terminal with none shows the words instead.
+    #[test]
+    fn the_greyed_rows_say_not_installed_and_the_category_and_differ_with_no_colour() {
+        let app = fixtures::app_in_settings_with_an_index();
+        let otel = text_of(&available_row(&app, 0, 80, fixtures::plain()));
+        let tail = text_of(&available_row(&app, 1, 80, fixtures::plain()));
+        for (row, name, category) in [(&otel, "otel", "metrics"), (&tail, "tail-grep", "logs")] {
+            assert!(row.contains(name), "{row:?}");
+            assert!(row.contains("not installed"), "{row:?}");
+            assert!(row.contains(category), "{row:?}");
+        }
+        assert_ne!(otel, tail);
+
+        let drawn = content_lines(&app, app.settings().unwrap(), fixtures::plain(), 80, 0)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let installed = drawn
+            .iter()
+            .find(|line| line.contains("rotate"))
+            .unwrap_or_else(|| panic!("the adopted dog is drawn: {drawn:?}"));
+        assert!(
+            !installed.contains("not installed"),
+            "an installed dog's row is not marked: {installed:?}"
+        );
+        let at = |name: &str| drawn.iter().position(|line| line.contains(name));
+        assert!(at("rotate") < at("otel"), "after the installed: {drawn:?}");
+        assert!(
+            at("tail-grep") < at("browse dogs"),
+            "before browse: {drawn:?}"
+        );
+    }
+
+    #[test]
+    fn a_greyed_row_is_painted_muted_where_there_is_colour() {
+        let app = fixtures::app_in_settings_with_an_index();
+        let palette = fixtures::coloured();
+        let line = available_row(&app, 0, 80, palette);
+        let painted = line.spans.last().expect("the row has a body");
+        assert_eq!(painted.style, palette.muted());
+        assert_ne!(palette.muted(), ratatui::style::Style::default());
+    }
+
+    /// The name gives way before the state and the category do, in every
+    /// category the index can carry.
+    #[test]
+    fn a_greyed_row_keeps_its_state_and_category_at_the_narrow_floor() {
+        use crate::dog_index::CATEGORIES;
+        use crate::lookout::app::{CatalogueRead, DogState, Msg};
+        use crate::lookout::view::MIN_TERM_WIDTH;
+        let mut app = fixtures::app_in_settings_with_an_index();
+        let rows = CATEGORIES
+            .iter()
+            .map(|category| {
+                fixtures::catalogue_row("a-much-longer-dog-name", category, DogState::NotInstalled)
+            })
+            .collect();
+        app.update(Msg::Catalogue {
+            result: Ok(Box::new(CatalogueRead {
+                rows,
+                refreshing: false,
+            })),
+        });
+        for (index, category) in CATEGORIES.iter().enumerate() {
+            let line = text_of(&available_row(
+                &app,
+                index,
+                MIN_TERM_WIDTH,
+                fixtures::plain(),
+            ));
+            assert!(line.contains("not installed"), "{line:?}");
+            assert!(line.contains(category), "{category}: {line:?}");
+            assert!(
+                visible_width(&line) <= usize::from(MIN_TERM_WIDTH),
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_greyed_row_fits_the_narrow_floor() {
+        use crate::lookout::view::MIN_TERM_WIDTH;
+        let app = fixtures::app_in_settings_with_an_index();
+        for width in [MIN_TERM_WIDTH, 50, 120] {
+            let line = text_of(&available_row(&app, 1, width, fixtures::plain()));
+            assert!(
+                visible_width(&line) <= usize::from(width),
+                "{width}: {line:?}"
+            );
+        }
     }
 }

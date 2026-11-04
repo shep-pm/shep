@@ -60,6 +60,7 @@ impl Settings {
             | SettingsRow::DogEnv(_)
             | SettingsRow::DogEnvKey { .. }
             | SettingsRow::DogEnvNew(_)
+            | SettingsRow::AvailableDog(_)
             | SettingsRow::BrowseDogs => None,
         }
     }
@@ -123,6 +124,7 @@ impl Settings {
             | SettingsRow::DogEnvKey { .. }
             | SettingsRow::DogEnvNew(_)
             | SettingsRow::DogField { .. }
+            | SettingsRow::AvailableDog(_)
             | SettingsRow::BrowseDogs => None,
         }
     }
