@@ -15,9 +15,10 @@ use std::time::{Duration, Instant};
 
 use shep_client::RequestError;
 use shep_core::config::DogTable;
+use shep_core::dogs::pane::{PANE_ACTION, Pane};
 use shep_core::protocol::{
-    BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind, ProcessInfo, Request,
-    Response, SelectorSpec, SheepConfigView, SheepRefusal,
+    ActionOutcome, BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind,
+    ProcessInfo, Request, Response, SelectorSpec, SheepConfigView, SheepRefusal,
 };
 use shep_core::secrets::ALL_ENVIRONMENTS;
 use shep_core::status::ProcStatus;
@@ -28,6 +29,7 @@ use super::pane::{
     ConfigPane, DogRow, DogToggle, FieldValue, ListedDog, Lock, PaneEdit, PaneRow, PaneTarget,
     ReloadKind, SectionWrite, SheepDogEntry,
 };
+use super::pane::{DeclaredPane, DogStatus};
 use super::pane_bleats::BleatsPane;
 use super::pane_sheep::SheepPane;
 use super::secrets::{SecretRow, SecretsModel, Source};

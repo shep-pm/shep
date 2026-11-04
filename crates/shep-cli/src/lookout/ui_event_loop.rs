@@ -3,7 +3,7 @@ use super::app::{
     App, Body, DogRun, DogRunner, Effect, InputMode, Msg, Pasted, RevealedValue, RowKey, Sent,
 };
 use super::batch_dispatch::{enable_refusal_message, send_batch};
-use super::pane::SheepDogEntry;
+use super::pane::{DeclaredPane, SheepDogEntry};
 use super::wiring::{HEARTBEAT, HINT_EVERY};
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
@@ -479,6 +479,28 @@ where
                         env_keys: Vec::new(),
                         result: Err(format!("the schema probe failed: {err}")),
                     })
+                }));
+            }
+            // The cache only, never the binary: this spawns no dog. Off this
+            // task for `Effect::LoadDogPane`'s reason, since the cache is
+            // keyed on a digest of the binary and hashing it reads the file.
+            // A read that panicked declares no pane, which opens the pane as
+            // it was before panes.
+            Effect::ReadDogPane { name, adopted_path } => {
+                let home = paths.home.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    crate::commands::dogs::cached_manifest(&adopted_path, &home)
+                        .filter(|manifest| manifest.pane)
+                        .map(|manifest| DeclaredPane {
+                            actions: manifest.actions.into_iter().map(|a| a.name).collect(),
+                            events: manifest.events.into_iter().map(|e| e.kind).collect(),
+                        })
+                });
+                inflight.push(Box::pin(async move {
+                    Msg::DogDeclaresPane {
+                        name,
+                        declared: handle.await.ok().flatten(),
+                    }
                 }));
             }
             // Off this task for `Effect::LoadDogPane`'s reason. A listing

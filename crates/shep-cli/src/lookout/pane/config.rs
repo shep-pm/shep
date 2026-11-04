@@ -30,6 +30,7 @@ use crate::dog_settings::standard::dog_wide_keys;
 #[cfg(doc)]
 use super::super::field::ValueKind;
 use super::super::keyvalue::KeyValues;
+use super::dog_status::{DeclaredPane, DogStatus};
 use super::dogs::{DogsTab, dog_names};
 use super::{ArmedEnv, ListPane, Lock, PaneEdit, PaneRow, PaneTarget, PaneTyping, PathStep};
 #[cfg(doc)]
@@ -143,6 +144,9 @@ pub struct ConfigPane {
     /// fields keyed by the name their edits file under. Empty for any other
     /// target. See [`super::union`].
     pub(super) arms: Arc<BTreeMap<String, Field>>,
+    /// A dog's `shep.pane` pull, or [`None`] for a dog that declares no pane
+    /// and for every other target. See [`DogStatus`].
+    pub(super) status: Option<Box<DogStatus>>,
 }
 
 impl core::fmt::Debug for ConfigPane {
@@ -184,6 +188,7 @@ impl ConfigPane {
             armed_env: None,
             list: None,
             dogs_tab: Box::default(),
+            status: None,
             section: None,
             dog_table: None,
             reshapes: Arc::default(),
@@ -248,6 +253,7 @@ impl ConfigPane {
             armed_env: None,
             list: None,
             dogs_tab: Box::default(),
+            status: None,
             section: Some(Box::new(DogSection {
                 toml: section,
                 dog_wide: dog_wide_keys(&schema),
@@ -417,6 +423,41 @@ impl ConfigPane {
     #[must_use]
     pub fn target(&self) -> &PaneTarget {
         &self.target
+    }
+
+    /// The dog's `shep.pane` pull, or [`None`] for a dog that declares no
+    /// pane and for any other target.
+    #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the status tab draws the pull, and has not landed"
+        )
+    )]
+    pub fn status(&self) -> Option<&DogStatus> {
+        self.status.as_deref()
+    }
+
+    /// [`Self::status`], to land an answer on.
+    pub(in crate::lookout) fn status_mut(&mut self) -> Option<&mut DogStatus> {
+        self.status.as_deref_mut()
+    }
+
+    /// Holds `declared` as this dog's pane. A pane already held keeps what it
+    /// pulled.
+    pub(in crate::lookout) fn declare_pane(&mut self, declared: DeclaredPane) {
+        match self.status.as_deref_mut() {
+            Some(held) => held.redeclare(declared),
+            None => self.status = Some(Box::new(DogStatus::new(declared))),
+        }
+    }
+
+    /// Takes over what `previous` held of the dog's pull, for a pane rebuilt
+    /// over a re-read section: the pull is a different read from the section's
+    /// and a re-read of one must not discard the other.
+    pub(in crate::lookout) fn adopt_status_from(&mut self, previous: &Self) {
+        self.status.clone_from(&previous.status);
     }
 
     /// The form.

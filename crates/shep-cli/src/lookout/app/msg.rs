@@ -368,6 +368,16 @@ pub enum Msg {
         /// The dog's schema, or why there is no pane for it.
         result: Result<serde_json::Value, String>,
     },
+    /// An [`Effect::ReadDogPane`] has read the dog's cached manifest.
+    ///
+    /// Dropped unless the dog's config pane is still the one open.
+    DogDeclaresPane {
+        /// The dog.
+        name: String,
+        /// What the manifest declares of a pane, or [`None`] when it declares
+        /// none or no manifest is cached.
+        declared: Option<DeclaredPane>,
+    },
     /// An [`Effect::ListSheepDogs`] has answered: every dog this shepherd
     /// knows, a built-in with its per-sheep schema where it publishes one
     /// and an adopted dog by name alone. Dropped unless the pane that asked
@@ -613,6 +623,19 @@ pub enum Effect {
         name: String,
         /// The adopted binary, or [`None`] for a built-in.
         adopted_path: Option<PathBuf>,
+    },
+    /// Read an adopted dog's cached manifest for whether it declares `pane`;
+    /// the answer lands as [`Msg::DogDeclaresPane`]. Raised when the dog's
+    /// config pane opens, never over `--host`: the cache is this machine's
+    /// and the remote dog's binary is not here.
+    ///
+    /// `spawn_blocking`, for [`Self::LoadDogPane`]'s reason. Reads the cache
+    /// only and spawns no dog.
+    ReadDogPane {
+        /// The dog.
+        name: String,
+        /// The adopted binary the manifest was cached under.
+        adopted_path: PathBuf,
     },
     /// List the dogs that can hold a table on a sheep; the answer lands as
     /// [`Msg::SheepDogNames`]. Raised the first time a sheep pane's `dogs`

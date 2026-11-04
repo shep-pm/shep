@@ -96,6 +96,7 @@ impl App {
                 env_keys,
                 result,
             } => self.on_dog_pane_answer(name, adopted_path, env_keys, result),
+            Msg::DogDeclaresPane { name, declared } => self.on_dog_declares_pane(&name, declared),
             Msg::SheepDogNames { sheep, ask, dogs } => {
                 self.on_sheep_dog_names_answer(sheep, ask, dogs)
             }

@@ -10,12 +10,14 @@
 use core::fmt;
 use std::time::Duration;
 
+use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
 use shep_client::{Lagged, RequestError};
 use shep_core::protocol::BusEvent;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
-use super::app::Msg;
+use super::app::{Msg, Sent};
 use super::source::{EventSource, FlockSource, Shepherd};
 
 /// How often the flock is re-listed when nothing has gone wrong.
@@ -160,6 +162,12 @@ pub async fn run_connected<F: FlockSource, E: EventSource>(
     // at a shepherd that is probably why it fell behind.
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
+    // Requests that may take the whole trigger deadline, in flight beside the
+    // stream. Each resolves to the `Msg` its reply belongs in, so a dog that
+    // hangs holds nothing but its own entry. Dropped with the connection: a
+    // reply to a link that is gone has nowhere to arrive.
+    let mut pulls = FuturesUnordered::new();
+
     loop {
         tokio::select! {
             _ = ticker.tick() => reconcile(&flock, &msgs).await?,
@@ -168,12 +176,24 @@ pub async fn run_connected<F: FlockSource, E: EventSource>(
             // all been dropped is `Ready(None)` forever, and a `_` pattern
             // would spin this loop. A pattern that fails disables the branch.
             Some(sent) = channels.requests.recv() => {
-                // Awaited inline, holding the other arms for the request's
-                // duration, bounded by the client's own deadline.
-                let result = flock.send(sent.request()).await;
-                msgs.send(Msg::Replied { sent, result })
-                    .await
-                    .map_err(|_| UiGone)?;
+                if matches!(sent, Sent::DogPane { .. }) {
+                    // A trigger to a dog that hangs waits out its deadline,
+                    // up to a minute, so it is polled beside the stream and
+                    // the poll rather than awaited here.
+                    pulls.push(reply_to(&flock, sent));
+                } else {
+                    // Awaited inline, holding the other arms for the
+                    // request's duration, bounded by the client's own
+                    // deadline.
+                    msgs.send(reply_to(&flock, sent).await)
+                        .await
+                        .map_err(|_| UiGone)?;
+                }
+            }
+            // `Some(msg) = ...` for the same reason as above: no request in
+            // flight is `Ready(None)`, and that disables this arm.
+            Some(msg) = pulls.next() => {
+                msgs.send(msg).await.map_err(|_| UiGone)?;
             }
             next = events.next_event() => match next {
                 // The subscription ended: the connection is gone. Back to the
@@ -197,6 +217,12 @@ pub async fn run_connected<F: FlockSource, E: EventSource>(
             },
         }
     }
+}
+
+/// `sent` over the wire, as the [`Msg`] its reply belongs in.
+async fn reply_to<F: FlockSource>(flock: &F, sent: Sent) -> Msg {
+    let result = flock.send(sent.request()).await;
+    Msg::Replied { sent, result }
 }
 
 /// One listing, forwarded as a snapshot.
@@ -675,6 +701,171 @@ mod tests {
                 selector: SelectorSpec::Id(7)
             }],
             "the id it was asked about, as a selector, and nothing else"
+        );
+    }
+
+    /// A flock source whose ordinary requests wait on `gate` and whose
+    /// triggers either answer at once or never do.
+    struct ScriptedFlock {
+        gate: Arc<tokio::sync::Notify>,
+        hang_triggers: bool,
+    }
+
+    impl FlockSource for ScriptedFlock {
+        async fn flock(&self) -> Result<Vec<ProcessInfo>, RequestError> {
+            Ok(vec![sheep(1)])
+        }
+
+        async fn send(&self, request: Request) -> Result<Response, RequestError> {
+            match request {
+                Request::Trigger { .. } if self.hang_triggers => std::future::pending().await,
+                Request::Trigger { .. } => Ok(Response::Triggered(Vec::new())),
+                _ => {
+                    self.gate.notified().await;
+                    Ok(Response::Described(Vec::new()))
+                }
+            }
+        }
+    }
+
+    fn dog_pane() -> Sent {
+        Sent::DogPane {
+            name: "paddock".to_string(),
+        }
+    }
+
+    /// A trigger to a dog that hangs waits out the trigger deadline. Awaited
+    /// inline, it would hold the poll and the stream for that long.
+    #[tokio::test(start_paused = true)]
+    async fn a_pane_pull_that_never_answers_holds_up_neither_a_poll_nor_an_event() {
+        let (msg_tx, mut msg_rx) = mpsc::channel(64);
+        let (poll_tx, poll_rx) = mpsc::channel(1);
+        let (request_tx, request_rx) = mpsc::channel(2);
+        let (events_tx, events_rx) = broadcast::channel(4);
+        let task = tokio::spawn(run_connected(
+            ScriptedFlock {
+                gate: Arc::new(tokio::sync::Notify::new()),
+                hang_triggers: true,
+            },
+            BroadcastEvents(events_rx),
+            msg_tx,
+            Channels {
+                polls: poll_rx,
+                requests: request_rx,
+            },
+            Duration::from_secs(3600),
+        ));
+        request_tx.send(dog_pane()).await.unwrap();
+        poll_tx.send(()).await.unwrap();
+        let _ = events_tx.send(BusEvent::Dropped { count: 3 });
+
+        // The opening listing, the poll, the event and the repair that the
+        // event's `Dropped` earns: everything that is not the pull.
+        let mut snapshots = 0;
+        let mut event = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while snapshots < 3 || !event {
+            let Ok(Some(msg)) = tokio::time::timeout_at(deadline, msg_rx.recv()).await else {
+                break;
+            };
+            match msg {
+                Msg::Snapshot { .. } => snapshots += 1,
+                Msg::Event(BusEvent::Dropped { count: 3 }) => event = true,
+                Msg::Replied { .. } => panic!("a request that never answers replied"),
+                _ => {}
+            }
+        }
+        task.abort();
+
+        assert!(event, "the event reached the UI while the pull was out");
+        assert_eq!(
+            snapshots, 3,
+            "the opening listing, the poll and the event's repair all landed"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_pane_pull_reply_arrives_as_replied() {
+        let (msg_tx, mut msg_rx) = mpsc::channel(64);
+        let (_poll_tx, poll_rx) = mpsc::channel(1);
+        let (request_tx, request_rx) = mpsc::channel(2);
+        let (_events_tx, events_rx) = broadcast::channel(4);
+        let task = tokio::spawn(run_connected(
+            ScriptedFlock {
+                gate: Arc::new(tokio::sync::Notify::new()),
+                hang_triggers: false,
+            },
+            BroadcastEvents(events_rx),
+            msg_tx,
+            Channels {
+                polls: poll_rx,
+                requests: request_rx,
+            },
+            Duration::from_secs(3600),
+        ));
+        request_tx.send(dog_pane()).await.unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut answered = None;
+        while answered.is_none() {
+            let Ok(Some(msg)) = tokio::time::timeout_at(deadline, msg_rx.recv()).await else {
+                break;
+            };
+            if let Msg::Replied { sent, result } = msg {
+                answered = Some((sent, result));
+            }
+        }
+        task.abort();
+
+        let (sent, result) = answered.expect("the reply came back");
+        assert_eq!(sent, dog_pane(), "tagged with what it answered");
+        assert!(matches!(result, Ok(Response::Triggered(_))));
+    }
+
+    /// Only a pull leaves the inline path: every other request holds the
+    /// loop for its own duration, as it always has.
+    #[tokio::test(start_paused = true)]
+    async fn an_ordinary_request_is_still_awaited_inline() {
+        let (msg_tx, mut msg_rx) = mpsc::channel(64);
+        let (poll_tx, poll_rx) = mpsc::channel(1);
+        let (request_tx, request_rx) = mpsc::channel(2);
+        let (_events_tx, events_rx) = broadcast::channel(4);
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let task = tokio::spawn(run_connected(
+            ScriptedFlock {
+                gate: Arc::clone(&gate),
+                hang_triggers: false,
+            },
+            BroadcastEvents(events_rx),
+            msg_tx,
+            Channels {
+                polls: poll_rx,
+                requests: request_rx,
+            },
+            Duration::from_secs(3600),
+        ));
+        assert!(matches!(msg_rx.recv().await, Some(Msg::Snapshot { .. })));
+        request_tx.send(Sent::Lambs { id: 7 }).await.unwrap();
+        // Lets the loop take the request before the poll is raised: with both
+        // ready at once, `select!` picks either.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        poll_tx.send(()).await.unwrap();
+
+        // The loop is inside the request, so the poll waits behind it.
+        let held = tokio::time::timeout(Duration::from_secs(5), msg_rx.recv()).await;
+        assert!(held.is_err(), "the poll got past a request in flight");
+
+        gate.notify_one();
+        let first = msg_rx.recv().await;
+        let second = msg_rx.recv().await;
+        task.abort();
+        assert!(
+            matches!(first, Some(Msg::Replied { .. })),
+            "the reply first: {first:?}"
+        );
+        assert!(
+            matches!(second, Some(Msg::Snapshot { .. })),
+            "then the poll that waited: {second:?}"
         );
     }
 }
