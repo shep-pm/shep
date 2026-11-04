@@ -83,7 +83,8 @@ pub(super) fn status_lines(
 }
 
 /// The lines under the body: why the newest pull failed while an older pane
-/// is still held, and how many sections this lookout could not draw.
+/// is still held, the events a section names that the dog does not declare,
+/// and how many sections this lookout could not draw.
 fn footer_lines(
     status: &DogStatus,
     palette: Palette,
@@ -95,6 +96,12 @@ fn footer_lines(
         texts.push((
             format!("could not refresh: {}", sanitise(reason).0),
             palette.attention(),
+        ));
+    }
+    for kind in status.undeclared_kinds() {
+        texts.push((
+            format!("{} is not an event this dog declares", sanitise(kind).0),
+            palette.muted(),
         ));
     }
     if let PaneState::Ready(pane) = status.state()

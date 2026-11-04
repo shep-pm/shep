@@ -254,6 +254,8 @@ pub(super) fn moved_entries(dropped: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    mod refresh;
+
     use super::*;
     use crate::lookout::app::testing::*;
     use shep_core::protocol::RpcError;

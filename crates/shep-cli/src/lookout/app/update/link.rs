@@ -65,8 +65,10 @@ impl App {
                 self.notice = Some(Notice::info(format!(
                     "the shepherd dropped {count} events; re-reading the flock"
                 )));
+                self.mark_dog_pane_due();
                 Effect::PollNow
             }
+            BusEvent::Dog { dog, kind, .. } => self.on_dog_event(&dog, &kind),
             // A notice, not an exit: a dashboard that vanished would take the
             // last known state with it.
             BusEvent::DaemonShutdown => {
@@ -84,6 +86,7 @@ impl App {
         self.notice = Some(Notice::info(format!(
             "lookout fell behind and lost {count} events; re-reading the flock"
         )));
+        self.mark_dog_pane_due();
         Effect::PollNow
     }
 
@@ -100,6 +103,8 @@ impl App {
     pub(super) fn on_relinked(&mut self) -> Effect {
         if !matches!(self.link, Link::Lost { .. }) {
             self.link = Link::Live;
+            // Events published during the gap were never delivered.
+            self.mark_dog_pane_due();
         }
         Effect::None
     }
@@ -215,12 +220,13 @@ impl App {
         // tick. The dashboard raises nothing here, or every lookout would
         // poll twice as often for nothing. `Link::Lost` too: `Msg::Bleats`
         // throws the tail away while the link is down.
-        if matches!(self.body, Body::Bleats(_) | Body::Sheep(_))
-            && !matches!(self.link, Link::Lost { .. })
-        {
+        if matches!(self.link, Link::Lost { .. }) {
+            return Effect::None;
+        }
+        if matches!(self.body, Body::Bleats(_) | Body::Sheep(_)) {
             Effect::RefreshFeed
         } else {
-            Effect::None
+            self.send_pending_pull(now)
         }
     }
 

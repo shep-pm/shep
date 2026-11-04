@@ -4,7 +4,9 @@
 //! section, so this rides across the rebuild, with the open tab and the
 //! cursor, beside the open tables.
 
-use shep_core::dogs::pane::Pane;
+use std::time::{Duration, Instant};
+
+use shep_core::dogs::pane::{Pane, Section};
 
 use super::status::{Layout, StatusView, Step, Tab, layout};
 
@@ -21,6 +23,10 @@ pub struct DeclaredPane {
     /// The kinds of the manifest's `events`.
     pub events: Vec<String>,
 }
+
+/// The least time between two pulls of one pane, so a burst of events costs
+/// one pull at its start and one at its end.
+const PULL_GAP: Duration = Duration::from_secs(1);
 
 /// How the pull stands.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +50,10 @@ pub struct DogStatus {
     failed: Option<String>,
     /// Whether a pull is out and has not landed.
     pulling: bool,
+    /// When the newest pull went out.
+    last_pull: Option<Instant>,
+    /// Whether an event asked for a pull that has not gone out yet.
+    pending: bool,
     /// The open tab and the status tab's cursor.
     view: StatusView,
 }
@@ -57,6 +67,8 @@ impl DogStatus {
             state: PaneState::Waiting,
             failed: None,
             pulling: false,
+            last_pull: None,
+            pending: false,
             view: StatusView::default(),
         }
     }
@@ -69,13 +81,6 @@ impl DogStatus {
 
     /// What the dog's manifest declares.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the pane's actions and refresh read it, and have not landed"
-        )
-    )]
     pub fn declared(&self) -> &DeclaredPane {
         &self.declared
     }
@@ -94,11 +99,81 @@ impl DogStatus {
         self.failed.as_deref()
     }
 
-    /// Marks a pull as out, and says whether to send it. `false` while one is
-    /// already waiting, so a second ask is not sent.
+    /// Marks a pull as out at `now`, and says whether to send it. `false`
+    /// while one is already waiting, so a second ask is not sent.
     #[must_use]
-    pub(in crate::lookout) fn begin_pull(&mut self) -> bool {
-        !core::mem::replace(&mut self.pulling, true)
+    pub(in crate::lookout) fn begin_pull(&mut self, now: Instant) -> bool {
+        if core::mem::replace(&mut self.pulling, true) {
+            return false;
+        }
+        self.last_pull = Some(now);
+        self.pending = false;
+        true
+    }
+
+    /// Whether the pane is showing a section that names `kind`, an event kind
+    /// the manifest declares.
+    #[must_use]
+    pub(in crate::lookout) fn refreshes_on(&self, kind: &str) -> bool {
+        self.declared()
+            .events
+            .iter()
+            .any(|declared| declared == kind)
+            && self.named_kinds().contains(&kind)
+    }
+
+    /// The kinds the held pane's sections name that the manifest does not
+    /// declare, each once, in the order the sections first name them.
+    #[must_use]
+    pub(in crate::lookout) fn undeclared_kinds(&self) -> Vec<&str> {
+        let mut kinds: Vec<&str> = Vec::new();
+        for kind in self.named_kinds() {
+            let declared = self.declared().events.iter().any(|event| event == kind);
+            if !declared && !kinds.contains(&kind) {
+                kinds.push(kind);
+            }
+        }
+        kinds
+    }
+
+    /// Every `refresh_on` kind of the held pane's sections.
+    fn named_kinds(&self) -> Vec<&str> {
+        let PaneState::Ready(pane) = &self.state else {
+            return Vec::new();
+        };
+        pane.sections
+            .iter()
+            .flat_map(|section| match section {
+                Section::Fields(fields) => fields.refresh_on.as_slice(),
+                Section::Table(table) => table.refresh_on.as_slice(),
+                _unknown => &[],
+            })
+            .map(String::as_str)
+            .collect()
+    }
+
+    /// Marks a pull due, and says whether to send it now: when none is out
+    /// and the last went out a second or more before `now`. Otherwise the
+    /// pull waits for [`Self::send_pending`].
+    #[must_use]
+    pub(in crate::lookout) fn pull_due(&mut self, now: Instant) -> bool {
+        self.pending = true;
+        self.send_pending(now)
+    }
+
+    /// Marks a pull due without sending it: the next tick does.
+    pub(in crate::lookout) fn mark_due(&mut self) {
+        self.pending = true;
+    }
+
+    /// Sends the pull that was marked due, once none is out and a second has
+    /// passed since the last.
+    #[must_use]
+    pub(in crate::lookout) fn send_pending(&mut self, now: Instant) -> bool {
+        let rested = self
+            .last_pull
+            .is_none_or(|last| now.saturating_duration_since(last) >= PULL_GAP);
+        self.pending && rested && self.begin_pull(now)
     }
 
     /// Takes a pull's answer: a read pane, or the reason it came to nothing.
@@ -130,8 +205,11 @@ impl DogStatus {
     }
 
     /// Opens the tab that is not open.
+    ///
+    /// Leaving the status tab drops a pull that was waiting for the tick.
     pub(in crate::lookout) fn switch_tab(&mut self) {
         self.view.switch();
+        self.pending = false;
     }
 
     /// The row the status tab's cursor is on, counted over every table's rows
@@ -154,6 +232,7 @@ impl DogStatus {
     /// rest is what the window shows.
     pub(in crate::lookout) fn set_rows(&mut self, rows: usize) {
         let footer = usize::from(self.failed.is_some())
+            + self.undeclared_kinds().len()
             + usize::from(matches!(&self.state, PaneState::Ready(pane) if pane.skipped > 0));
         let room = if rows == 0 {
             0
