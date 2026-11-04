@@ -1143,7 +1143,7 @@ digit. A dog named `$(touch>x)` stays in `shep --help` and still runs, and is
 not completed.
 
 `Probe` builds it from what the dog already gives it. `permission`, `verb`,
-`depends_on_dog`, `depends_on_shep`, `defaults`, `validate`, `launch` and
+`depends_on_dog`, `depends_on_shep`, `defaults`, `validate`, `pane`, `launch` and
 `action` add what it declares:
 
 ```rust
@@ -1164,6 +1164,74 @@ itself: shep never checks that a handler exists for a declared name, and an
 action the dog answers but does not declare still runs. Built-in dogs
 declare none. The listing reads manifests on this machine, so `--host`
 refuses it.
+
+### Showing a pane
+
+A dog that declares `pane` answers `shep.pane` with what the operator should
+read: sections of label and value pairs, tables with a key per row, and the
+actions that go with them. Lookout draws the answer as written, so every
+value is a string the dog has already formatted. `Probe::pane` sets the flag
+and needs `ask_for_channel`: `shep adopt` reads a pane without a channel as no
+pane, and says so. `pane_answer` writes the reply body, from a pane built
+afresh on each ask:
+
+```rust
+use std::sync::{Arc, Mutex};
+
+use shep_client::dogs::{Destructive, PANE_ACTION, Pane, Probe, Row, pane_answer};
+
+fn build(models: &[String]) -> Pane {
+    Pane::new()
+        .fields("host", [("VRAM", "20 GiB")])
+        .table(
+            "models",
+            ["MODEL", "STATE"],
+            models.iter().map(|m| Row::new(m, [m.as_str(), "loaded"])),
+        )
+        .row_action("unload", "Unload", Destructive::Yes)
+}
+
+Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+    .ask_for_channel()
+    .pane()
+    .action("unload", "Unload a model")
+    .answer::<MyDogConfig>();
+
+let models = Arc::new(Mutex::new(vec!["qwen3-32b".to_string()]));
+let shown = Arc::clone(&models);
+let shepherd = shep_channel::serve();
+shepherd.on_action(PANE_ACTION, move |params, _name| {
+    pane_answer(params, || build(&shown.lock().unwrap()))
+});
+// A row action arrives as {"row": "<key>"}.
+shepherd.on_action("unload", move |params, _name| {
+    let row = params
+        .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+        .and_then(|p| p["row"].as_str().map(str::to_owned));
+    models.lock().unwrap().retain(|m| Some(m) != row.as_ref());
+    "unloaded".to_string()
+});
+```
+
+The body is one JSON object, which a dog in any language can write by hand:
+
+```json
+{"sections":[
+  {"kind":"fields","id":"host","title":"host","refresh_on":[],
+   "fields":[{"label":"VRAM","value":"20 GiB"}]},
+  {"kind":"table","id":"models","title":"models","refresh_on":[],
+   "columns":["MODEL","STATE"],
+   "rows":[{"key":"qwen3-32b","cells":["qwen3-32b","loaded"]}],
+   "row_actions":[{"action":"unload","label":"Unload","destructive":true}]}
+],"actions":[]}
+```
+
+A row holds one cell per column, and a section id or a row key may not
+repeat: `Pane::body` refuses them, and a body that has them is unreadable to
+shep. A row action is triggered with `{"row": "<key>"}` and a pane action with
+no params; each name must also be declared in the manifest's `actions`, which
+`Probe::action` does. `examples/pane_dog.rs` in `shep-client` is a complete
+dog.
 
 ## Answering `--schema`
 

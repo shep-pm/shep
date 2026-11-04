@@ -46,7 +46,7 @@ test-support = []
 # the feature on for the whole build.
 #
 # Cargo skips a target with an off required feature in silence, so `lib.rs`'s
-# `heads_up_four_integration_binaries_need_test_support_and_are_not_running`
+# `heads_up_five_integration_binaries_need_test_support_and_are_not_running`
 # compiles only when the feature is off, and names the gap in its own output.
 [[test]]
 name = "request_reply"
@@ -62,6 +62,10 @@ required-features = ["test-support"]
 
 [[test]]
 name = "spawn"
+required-features = ["test-support"]
+
+[[test]]
+name = "pane"
 required-features = ["test-support"]
 
 [dependencies]
