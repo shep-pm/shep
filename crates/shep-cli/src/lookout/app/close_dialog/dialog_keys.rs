@@ -30,6 +30,7 @@ impl App {
                 | KeyPress::Cycle
                 | KeyPress::Help
                 | KeyPress::Settings
+                | KeyPress::Catalogue
                 | KeyPress::FilterStart
                 | KeyPress::TextChar(_)
                 | KeyPress::TextBackspace
