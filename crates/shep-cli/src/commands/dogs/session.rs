@@ -103,13 +103,11 @@ impl Job {
 
 /// Runs `job` against the cached index for this build's index URL, reporting
 /// to `progress` and asking the grant question through `answer`. Returns the
-/// exit code the verb would have exited with and the text it would have
-/// printed.
+/// exit code the verb would have exited with and the text it printed.
 ///
-/// `reach` is [`Reach::real`] for a run that means it, and a test's own for
-/// one that stands a stub in for `cargo`. `answer` blocks, so a caller on an
-/// async runtime runs this on a blocking thread. Dropping the session
-/// part-way leaves what the verb leaves.
+/// `reach` is [`Reach::real`] for a real run and a test's own for one that
+/// stands a stub in for `cargo`. `answer` blocks, so a caller on an async
+/// runtime runs this on a blocking thread.
 pub(crate) async fn run(
     paths: &ShepPaths,
     job: Job,

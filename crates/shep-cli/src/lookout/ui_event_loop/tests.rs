@@ -314,17 +314,13 @@ fn cast_pid(pid: u32) -> i32 {
     i32::try_from(pid).expect("a pid fits an i32")
 }
 
-/// Drives `Effect::StartDogJob` to a quit, the only test that does: the
-/// job runs `cargo` on its own thread, and only the loop holds the handle
-/// that ends it.
+/// Drives `Effect::StartDogJob` to a quit, the only test that does: only
+/// the loop holds the handle that ends the job's own thread.
 ///
-/// The quit answers the `Confirm` lookout asks first, and the yes drops
-/// that thread's runtime, which drops the `cargo install` future spawned
-/// with `kill_on_drop`. Step 3 writes the receipt last, so a build cut off
-/// mid-way adopts nothing.
+/// The yes to the `Confirm` lookout asks first drops that thread, which
+/// drops the `cargo install` future spawned with `kill_on_drop`.
 ///
-/// No `start_paused`: the job runs on its own thread against its own real
-/// clock, and the wait for its pid file is a real wait.
+/// No `start_paused`: the job runs against its own real clock.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_quit_mid_build_leaves_no_cargo_and_no_receipt() {

@@ -715,9 +715,8 @@ pub enum Effect {
     /// runtime.
     ///
     /// Not `spawn_blocking`: the grant callback blocks on a modal answer, and
-    /// the run starts `cargo`, which needs a runtime of its own. Progress,
-    /// each question and the result land as [`Msg::DogStep`],
-    /// [`Msg::DogGrant`] and [`Msg::DogJobDone`].
+    /// the run starts `cargo`, which needs a runtime of its own. Progress and
+    /// the result land as [`Msg::DogStep`] and [`Msg::DogJobDone`].
     StartDogJob {
         /// Which job.
         job: Job,

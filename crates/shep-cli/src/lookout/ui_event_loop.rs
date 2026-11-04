@@ -80,12 +80,9 @@ where
 
     loop {
         // One gate, read once, so the feed is refreshed before the frame that
-        // shows it and never on a frame that is not about to be drawn.
-        // A modal is drawn past the throttle: it answers nothing until this
-        // loop has told it its reach, which only a draw does, and the loop
-        // only reaches a draw when something wakes it. A question opened just
-        // after one would otherwise sit off screen until the key that answers
-        // it woke the loop, and that key would go to the screen under it.
+        // shows it and never on a frame that is not about to be drawn. A
+        // modal is drawn past the throttle: it answers nothing until a draw
+        // has told it its reach, and the loop only reaches one when woken.
         let may_draw =
             last_draw.is_none_or(|at| at.elapsed() >= MIN_REDRAW) || app.modal().is_some();
         if feed_dirty && may_draw {
@@ -702,11 +699,10 @@ where
             // one modal cannot answer another.
             Effect::ModalAnswered { tag, yes } => app.answer_grant(tag, yes),
             Effect::None => {}
-            // Off this task, on a thread of its own with a current-thread
-            // runtime of its own: the grant callback blocks on a modal answer
-            // and the run starts `cargo`, and the UI task can hold neither.
-            // `_authority` is a proof carried by the effect, not a value this
-            // arm reads.
+            // Off this task, on a thread with a current-thread runtime of its
+            // own: the grant callback blocks on a modal answer and the run
+            // starts `cargo`, and the UI task can hold neither. `_authority`
+            // is a proof this arm never reads.
             Effect::StartDogJob {
                 job,
                 authority: _authority,
