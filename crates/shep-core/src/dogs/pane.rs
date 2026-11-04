@@ -24,11 +24,8 @@ pub const PANE_ACTION: &str = "shep.pane";
 /// no row to run.
 ///
 /// Build one with [`new`](Self::new) and the builder methods, or read a dog's
-/// answer back with [`read`](Self::read). Lookout decides the layout, the keys
-/// and the styling; a dog says only what a section holds.
-///
-/// `Debug` prints each section's id and its row count and never a value: a dog
-/// may put anything in a cell, including something it would not print.
+/// answer back with [`read`](Self::read). Lookout decides the layout and the
+/// styling. `Debug` prints each section's id and its row count, never a value.
 #[derive(Clone, Default, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct Pane {
