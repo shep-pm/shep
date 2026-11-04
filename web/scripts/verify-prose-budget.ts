@@ -191,7 +191,13 @@ export const BUDGETS: Record<string, number> = {
   // know it is answered over the channel, and that a manifest declaring it
   // without one has no pane to draw. The two raises land on one page, so the
   // ceiling is the one the merged page measures.
-  "writing-a-dog": 6357,
+  //
+  // Raised on #1490 for "Showing a pane": an author has to know `Probe::pane`
+  // needs the channel, that `pane_answer` writes the reply body from a pane
+  // built on each ask, what the JSON a dog in any language writes holds, and
+  // that every action the pane names is declared in the manifest. The ceiling
+  // sits about 4 words above the page.
+  "writing-a-dog": 6516,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new

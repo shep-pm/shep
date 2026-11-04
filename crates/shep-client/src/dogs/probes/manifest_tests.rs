@@ -149,3 +149,32 @@ fn a_probe_that_declares_launch_prints_it_in_the_manifest() {
     expected.launch = true;
     assert_eq!(manifest, expected);
 }
+
+#[test]
+fn a_probe_that_declares_a_pane_with_the_channel_prints_it_in_the_manifest() {
+    let probe = Probe::new("shep-gpu", "0.1.0").ask_for_channel().pane();
+    let manifest: Manifest = serde_json::from_str(&reply(&probe, MANIFEST_FLAG)).unwrap();
+
+    assert!(manifest.pane);
+    assert!(!manifest.pane_ignored);
+}
+
+/// `shep adopt` reads a pane without a channel as no pane, so the manifest a
+/// dog that forgot the channel prints is read as having none.
+#[test]
+fn a_probe_that_declares_no_pane_prints_none() {
+    let probe = Probe::new("shep-gpu", "0.1.0").ask_for_channel();
+    let manifest: Manifest = serde_json::from_str(&reply(&probe, MANIFEST_FLAG)).unwrap();
+
+    assert!(!manifest.pane);
+    assert!(!manifest.pane_ignored);
+}
+
+#[test]
+fn a_pane_without_the_channel_is_read_as_no_pane() {
+    let probe = Probe::new("shep-gpu", "0.1.0").pane();
+    let manifest: Manifest = serde_json::from_str(&reply(&probe, MANIFEST_FLAG)).unwrap();
+
+    assert!(!manifest.pane);
+    assert!(manifest.pane_ignored);
+}
