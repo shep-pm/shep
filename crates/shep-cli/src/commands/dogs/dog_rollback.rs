@@ -12,7 +12,7 @@ use crate::cli::AdoptArgs;
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
-use super::adopt::{Flow, adopt_noting};
+use super::adopt::{Flow, Note, adopt_noting};
 use super::consent::Input;
 use super::dog_upgrade::{describe, fail_receipt, report_waiting, waiting_of};
 use super::install::{Reach, lock_dog};
@@ -122,7 +122,16 @@ pub(super) async fn rollback(
         restart: true,
     };
     let config_before = std::fs::read(&paths.daemon_config).ok();
-    let code = adopt_noting(streams, paths, &adopting, input, flow, None, &mut false).await;
+    let code = adopt_noting(
+        streams,
+        paths,
+        &adopting,
+        input,
+        flow,
+        Note::default(),
+        &mut false,
+    )
+    .await;
     if code == ExitCode::Success || std::fs::read(&paths.daemon_config).ok() != config_before {
         kept.commit();
     }

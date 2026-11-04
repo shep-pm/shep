@@ -192,10 +192,10 @@ function adoptLine(dog: Dog): string {
       published it; another repository refuses.
       It lands in <code>$SHEP_HOME/dogs/&lt;name&gt;/&lt;version&gt;/</code>.
       It asks the grant question <code>shep adopt</code> asks, flagging a
-      permission the index row did not list, and enables the dog; a no leaves it disabled, and{" "}
-      <code>--no-enable</code> skips the enable. <code>receipt.json</code>
-      records what was approved and the
-      URL or command. Other rows print instructions.
+      declared permission absent from a row's permission list (a row with none
+      flags nothing), and enables the dog; a no leaves it disabled, and{" "}
+      <code>--no-enable</code> skips it. <code>receipt.json</code> records
+      what was approved. Other rows print instructions.
       With no name, <code>shep install</code> lists the index.
     </p>
     <p>

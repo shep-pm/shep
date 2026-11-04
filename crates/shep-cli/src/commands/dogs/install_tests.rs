@@ -7,10 +7,12 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use shep_core::dogs::manifest::Manifest;
 use shep_core::file_lock::FileLock;
 use shep_core::paths::ShepPaths;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use super::adopt::Note;
 use super::consent::Input;
 use super::install::{Lookup, Published, Reach, install_dog, published_from};
 use super::install_depends::Catalog;
@@ -407,6 +409,30 @@ async fn a_permission_the_index_did_not_list_puts_one_line_directly_above_the_gr
         .unwrap_or_else(|| panic!("no question was asked:\n{err}"));
     assert_eq!(lines[question - 1].trim(), NOT_LISTED, "{err}");
     assert_eq!(err.matches("the index did not list").count(), 1, "{err}");
+}
+
+#[test]
+fn the_note_is_built_from_the_manifest_adopt_reviews() {
+    let listed = [IndexedPermission {
+        name: "flock.read".to_owned(),
+        required: true,
+    }];
+    let manifest: Manifest = serde_json::from_str(DECLARES_AN_EXTRA).unwrap();
+    let note = Note {
+        text: Some("built from main at abc"),
+        listed: Some(&listed),
+    };
+
+    assert_eq!(
+        note.lines(Some(&manifest)).as_deref(),
+        Some("built from main at abc\nthe index did not list events:sheep.")
+    );
+    assert_eq!(
+        note.lines(None).as_deref(),
+        Some("built from main at abc"),
+        "no manifest, nothing to compare"
+    );
+    assert_eq!(Note::default().lines(Some(&manifest)), None);
 }
 
 #[tokio::test]
