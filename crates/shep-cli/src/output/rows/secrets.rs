@@ -270,10 +270,14 @@ impl Render for AvailableDogRows {
         "adopt_as",
         // Long and rarely glanced at in a row; the detail view is where an
         // operator reads them.
-        "repo", "license",
+        "repo",
+        "license",
         // The tagged `DogSourceKind` the detail view's install line is built
         // from.
         "source",
+        // What the index says the approved version asks for. A cell has no
+        // room for a list, and no way to mark one entry required.
+        "permissions",
     ];
 
     // NAME and PACKAGE identify a row, so both sit at the floor. DESCRIPTION,
@@ -401,6 +405,7 @@ mod tests {
             repo: "https://github.com/shep-pm/shep-log-rotate".to_string(),
             license: "MIT OR Apache-2.0".to_string(),
             category: "logs".to_string(),
+            permissions: None,
             source: crate::dog_index::DogSourceKind::CargoGit {
                 url: "https://github.com/shep-pm/shep-log-rotate".to_string(),
             },
@@ -441,6 +446,51 @@ mod tests {
         assert_eq!(
             rows[1][3],
             "Rotates grown log files and asks the shepherd to reopen them."
+        );
+    }
+
+    /// `permissions` is a JSON key and no column: a row has no room for a
+    /// list, and no way to mark one entry of it required. A row that lists
+    /// none still carries the key, as `null`.
+    #[test]
+    fn available_dog_json_carries_permissions_and_the_table_gains_no_column() {
+        let mut dog = sample_available_dog();
+        dog.permissions = Some(vec![
+            crate::dog_index::IndexedPermission {
+                name: "flock.read".to_string(),
+                required: true,
+            },
+            crate::dog_index::IndexedPermission {
+                name: "logs.read".to_string(),
+                required: false,
+            },
+        ]);
+
+        let json = serde_json::to_value(AvailableDogRows(vec![dog])).unwrap();
+        assert_eq!(
+            json[0]["permissions"],
+            serde_json::json!([
+                { "name": "flock.read", "required": true },
+                { "name": "logs.read", "required": false }
+            ]),
+            "{json}"
+        );
+
+        let unlisted =
+            serde_json::to_value(AvailableDogRows(vec![sample_available_dog()])).unwrap();
+        assert_eq!(
+            unlisted[0]["permissions"],
+            serde_json::Value::Null,
+            "{unlisted}"
+        );
+
+        assert_eq!(
+            AvailableDogRows::headers(),
+            &["NAME", "PACKAGE", "CATEGORY", "DESCRIPTION"]
+        );
+        assert_eq!(
+            AvailableDogRows(vec![sample_available_dog()]).rows()[0].len(),
+            4
         );
     }
 

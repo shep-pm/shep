@@ -192,7 +192,7 @@ test("a source that is missing entirely is refused", () => {
   assert.throws(() => validate([entry]), /source/);
 });
 
-// --- The cargo source's two optional fields -----------------------------
+// --- The cargo source's three optional fields ---------------------------
 
 const HASH = "0123456789abcdef".repeat(4);
 
@@ -230,9 +230,46 @@ test("a target that is not a triple is refused", () => {
   assert.throws(() => validate([cargo({ version: "0.2.4", sha256: { "Mac OS": HASH } })]), /Mac OS/);
 });
 
-test("the schema describes both cargo fields", async () => {
+test("the schema describes each cargo field", async () => {
   const schema = JSON.parse(await readFile(new URL("../public/dogs.schema.json", import.meta.url), "utf8"));
   const cargoSchema = schema.properties.dogs.items.properties.source.oneOf[0];
-  assert.deepEqual(Object.keys(cargoSchema.properties).sort(), ["kind", "sha256", "version"]);
+  assert.deepEqual(Object.keys(cargoSchema.properties).sort(), ["kind", "permissions", "sha256", "version"]);
   assert.deepEqual(cargoSchema.dependentRequired, { sha256: ["version"] });
+
+  const permission = cargoSchema.properties.permissions.items;
+  assert.deepEqual(Object.keys(permission.properties).sort(), ["name", "required"]);
+  assert.deepEqual(permission.required, ["name", "required"]);
+  assert.equal(permission.additionalProperties, false);
+});
+
+// --- The cargo source's permissions list --------------------------------
+
+test("a cargo source keeps the permissions it lists", () => {
+  const permissions = [
+    { name: "flock.read", required: true },
+    { name: "logs.read", required: false },
+  ];
+  const [dog] = validate([cargo({ version: "0.2.4", permissions })]);
+  assert.deepEqual(dog.source, { kind: "cargo", version: "0.2.4", permissions });
+});
+
+test("an empty permissions list validates, as a version declaring none", () => {
+  const [dog] = validate([cargo({ version: "0.2.4", permissions: [] })]);
+  assert.deepEqual(dog.source, { kind: "cargo", version: "0.2.4", permissions: [] });
+});
+
+test("a permissions value that is not a list is refused", () => {
+  assert.throws(() => validate([cargo({ version: "0.2.4", permissions: "flock.read" })]), /permissions/);
+});
+
+test("a permission that is not a name and a required is refused", () => {
+  for (const bad of [
+    { name: "flock.read" },
+    { required: true },
+    { name: "flock.read", required: "yes" },
+    { name: "", required: true },
+    "flock.read",
+  ]) {
+    assert.throws(() => validate([cargo({ version: "0.2.4", permissions: [bad] })]), /permissions/, JSON.stringify(bad));
+  }
 });

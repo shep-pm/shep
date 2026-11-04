@@ -95,7 +95,7 @@ fn validate_entry(entry: &Value, sanitised: &mut bool) -> Option<AvailableDog> {
     if !is_https(&repo) {
         return None;
     }
-    let source = validate_source(entry.get("source")?, sanitised)?;
+    let (source, permissions) = validate_source(entry.get("source")?, sanitised)?;
     Some(AvailableDog {
         name,
         package,
@@ -105,16 +105,21 @@ fn validate_entry(entry: &Value, sanitised: &mut bool) -> Option<AvailableDog> {
         license,
         category,
         source,
+        permissions,
     })
 }
 
-/// One entry's `source`, or `None` for an unknown `kind` or a missing
-/// payload.
+/// One entry's `source`, and the permissions beside it, or `None` for an
+/// unknown `kind` or a missing payload.
 ///
-/// `kind` is matched raw and never sanitised: it is a tag rather than
-/// prose, so a `kind` carrying an escape matches nothing and takes the
-/// entry with it.
-fn validate_source(source: &Value, sanitised: &mut bool) -> Option<DogSourceKind> {
+/// `kind` is matched raw and never sanitised: it is a tag rather than prose,
+/// so a `kind` carrying an escape matches nothing and takes the entry with it.
+///
+/// Only a `cargo` row's half of the pair can hold permissions.
+fn validate_source(
+    source: &Value,
+    sanitised: &mut bool,
+) -> Option<(DogSourceKind, Option<Vec<IndexedPermission>>)> {
     let source = source.as_object()?;
     match source.get("kind")?.as_str()? {
         "cargo" => {
@@ -128,21 +133,31 @@ fn validate_source(source: &Value, sanitised: &mut bool) -> Option<DogSourceKind
                 None => BTreeMap::new(),
                 Some(hashes) => validate_hashes(hashes)?,
             };
-            Some(DogSourceKind::Cargo { version, sha256 })
+            let permissions = match source.get("permissions") {
+                None => None,
+                Some(permissions) => Some(validate_permissions(permissions, sanitised)?),
+            };
+            Some((DogSourceKind::Cargo { version, sha256 }, permissions))
         }
         "cargo-git" => {
             let url = field(source, "url", sanitised)?;
             if !is_https(&url) {
                 return None;
             }
-            Some(DogSourceKind::CargoGit { url })
+            Some((DogSourceKind::CargoGit { url }, None))
         }
-        "go-install" => Some(DogSourceKind::GoInstall {
-            module: field(source, "module", sanitised)?,
-        }),
-        "manual" => Some(DogSourceKind::Manual {
-            instructions: field(source, "instructions", sanitised)?,
-        }),
+        "go-install" => Some((
+            DogSourceKind::GoInstall {
+                module: field(source, "module", sanitised)?,
+            },
+            None,
+        )),
+        "manual" => Some((
+            DogSourceKind::Manual {
+                instructions: field(source, "instructions", sanitised)?,
+            },
+            None,
+        )),
         _ => None,
     }
 }
@@ -168,6 +183,31 @@ fn validate_hashes(hashes: &Value) -> Option<BTreeMap<String, String>> {
                     .bytes()
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
             (target_ok && hash_ok).then(|| (target.clone(), hash.to_owned()))
+        })
+        .collect()
+}
+
+/// A `permissions` list, or `None` when it is not an array or any item
+/// breaks the grammar: an object carrying a non-empty `name` string and a
+/// `required` boolean.
+///
+/// Strict about the two keys it reads and silent about any other, so a key a
+/// later index adds costs the row nothing. A name is sanitised like the
+/// entry's other strings.
+fn validate_permissions(
+    permissions: &Value,
+    sanitised: &mut bool,
+) -> Option<Vec<IndexedPermission>> {
+    permissions
+        .as_array()?
+        .iter()
+        .map(|permission| {
+            let permission = permission.as_object()?;
+            let name = field(permission, "name", sanitised)?;
+            Some(IndexedPermission {
+                name,
+                required: permission.get("required")?.as_bool()?,
+            })
         })
         .collect()
 }
@@ -633,6 +673,128 @@ pub(super) mod tests {
         let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
 
         assert_eq!(index.skipped, 1);
+    }
+
+    /// The keys [`validate_source`] reads off a `cargo` source. Tests only,
+    /// like [`SOURCE_KINDS`]: `the_schema_declares_the_cargo_source_keys`
+    /// holds this equal to the published schema's `cargo` variant.
+    pub(crate) const CARGO_SOURCE_KEYS: [&str; 4] = ["kind", "permissions", "sha256", "version"];
+
+    #[test]
+    fn a_cargo_source_lists_each_permission_and_whether_it_is_required() {
+        let source = serde_json::json!({
+            "kind": "cargo",
+            "version": "0.2.4",
+            "permissions": [
+                { "name": "flock.read", "required": true },
+                { "name": "logs.read", "required": false }
+            ]
+        });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        assert_eq!(index.skipped, 0);
+        assert_eq!(
+            index.dogs[0].permissions,
+            Some(vec![
+                IndexedPermission {
+                    name: "flock.read".to_owned(),
+                    required: true,
+                },
+                IndexedPermission {
+                    name: "logs.read".to_owned(),
+                    required: false,
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn a_cargo_source_that_lists_no_permissions_is_none() {
+        let source = serde_json::json!({ "kind": "cargo", "version": "0.2.4" });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        assert_eq!(index.dogs[0].permissions, None);
+    }
+
+    /// The two are different claims: a row that lists nothing is not a row
+    /// that says this version asks for nothing.
+    #[test]
+    fn an_empty_permissions_list_is_a_version_declaring_none() {
+        let source = serde_json::json!({
+            "kind": "cargo",
+            "version": "0.2.4",
+            "permissions": []
+        });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        assert_eq!(index.skipped, 0);
+        assert_eq!(index.dogs[0].permissions, Some(Vec::new()));
+    }
+
+    #[test]
+    fn a_permissions_value_that_is_not_an_array_skips_the_entry() {
+        for bad in [
+            serde_json::json!("flock.read"),
+            serde_json::json!({"flock.read": true}),
+            serde_json::json!(null),
+        ] {
+            let source =
+                serde_json::json!({ "kind": "cargo", "version": "0.2.4", "permissions": bad });
+            let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+            assert_eq!(index.skipped, 1, "{bad} was accepted");
+        }
+    }
+
+    /// Each item has to name the permission and say whether the dog can run
+    /// without it. A name that cleans to nothing is unusable in a prompt.
+    #[test]
+    fn a_permission_item_that_is_not_a_name_and_a_required_skips_the_entry() {
+        for bad in [
+            serde_json::json!("flock.read"),
+            serde_json::json!({ "name": "flock.read" }),
+            serde_json::json!({ "required": true }),
+            serde_json::json!({ "name": "flock.read", "required": "yes" }),
+            serde_json::json!({ "name": "", "required": true }),
+        ] {
+            let source = serde_json::json!({
+                "kind": "cargo",
+                "version": "0.2.4",
+                "permissions": [bad]
+            });
+            let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+            assert_eq!(index.skipped, 1, "{bad} was accepted");
+        }
+    }
+
+    #[test]
+    fn a_permission_name_carrying_an_escape_is_cleaned_like_every_other_string() {
+        let source = serde_json::json!({
+            "kind": "cargo",
+            "version": "0.2.4",
+            "permissions": [{ "name": "flock\u{1b}.read", "required": true }]
+        });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        let listed = index.dogs[0].permissions.as_ref().expect("listed");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "flock.read");
+        assert!(listed[0].required);
+        assert_eq!(index.sanitised, 1);
+    }
+
+    /// Only a `cargo` row carries permissions, so a `permissions` key beside
+    /// another kind is one more unknown key.
+    #[test]
+    fn a_non_cargo_source_lists_no_permissions() {
+        let source = serde_json::json!({
+            "kind": "cargo-git",
+            "url": "https://example.com/x",
+            "permissions": [{ "name": "flock.read", "required": true }]
+        });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        assert_eq!(index.skipped, 0);
+        assert_eq!(index.dogs[0].permissions, None);
     }
 
     /// A shep from before the hashes read the new document by ignoring

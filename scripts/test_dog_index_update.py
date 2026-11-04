@@ -95,6 +95,16 @@ class ApplyTests(unittest.TestCase):
         out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", hashes, REPOSITORY)
         self.assertLess(out.index(WINDOWS), out.index(LINUX))  # pc < unknown
 
+    # A list written for 0.1.0 would read as 0.2.0's, and this script is handed
+    # no manifest to restate it from. #1485 hands it one and writes the new list.
+    def test_a_permissions_list_from_the_version_being_replaced_is_dropped(self) -> None:
+        old = {"kind": "cargo", "version": "0.1.0", "permissions": [{"name": "flock.read", "required": True}]}
+        doc = self.apply(index_text(row(source=old)), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+        self.assertEqual(
+            self.source_of(doc),
+            {"kind": "cargo", "version": "0.2.0", "sha256": {LINUX: HASH_A}},
+        )
+
     def test_other_rows_and_the_wrapper_are_untouched(self) -> None:
         other = row(package="shep-other")
         other["name"] = "Moon"
@@ -227,8 +237,12 @@ class CommittedIndexTests(unittest.TestCase):
     def test_the_schema_declares_the_cargo_fields_the_script_writes(self) -> None:
         schema = json.loads((REPO_ROOT / "web/public/dogs.schema.json").read_text())
         cargo = schema["properties"]["dogs"]["items"]["properties"]["source"]["oneOf"][0]
-        self.assertEqual(sorted(cargo["properties"]), ["kind", "sha256", "version"])
+        self.assertEqual(sorted(cargo["properties"]), ["kind", "permissions", "sha256", "version"])
         self.assertEqual(cargo["properties"]["sha256"]["additionalProperties"]["pattern"], "^[0-9a-f]{64}$")
+        permission = cargo["properties"]["permissions"]["items"]
+        self.assertEqual(sorted(permission["properties"]), ["name", "required"])
+        self.assertEqual(permission["required"], ["name", "required"])
+        self.assertFalse(permission["additionalProperties"])
 
 
 if __name__ == "__main__":
