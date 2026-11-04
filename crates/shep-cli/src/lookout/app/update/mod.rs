@@ -58,6 +58,7 @@ impl App {
             catalogue: Vec::new(),
             dog_job: DogJob::Idle,
             dog_quit: None,
+            hint: None,
             dog_delete: None,
             next_modal_tag: 0,
         }
@@ -77,6 +78,7 @@ impl App {
             Msg::Key(key) => self.on_key(key),
             Msg::Paste(text) => self.on_paste(text.as_str()),
             Msg::Host { sample } => self.on_host(sample),
+            Msg::Hint { line } => self.on_hint(line),
             Msg::LogSize { id, total_bytes } => self.on_log_size(id, total_bytes),
             Msg::Bleats { tail } => self.on_bleats(tail),
             Msg::Replied { sent, result } => self.on_replied(sent, result),

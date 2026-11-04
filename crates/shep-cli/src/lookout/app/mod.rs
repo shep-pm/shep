@@ -512,6 +512,9 @@ pub struct App {
     /// arrive after the job it was asked about has landed, and a yes to a
     /// question still on screen must still quit.
     dog_quit: Option<u64>,
+    /// The line `shep flock` would print under this flock, from
+    /// [`Msg::Hint`]. Cleared when the link is lost.
+    hint: Option<String>,
     /// The tag and dog of the delete question lookout is asking, or `None`.
     dog_delete: Option<(u64, String)>,
     /// The next modal tag.

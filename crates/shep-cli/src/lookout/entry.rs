@@ -44,7 +44,7 @@ pub async fn lookout(
             watch(
                 streams,
                 shepherd,
-                LocalReader::new(),
+                LocalReader::new().with_paths(paths.clone()),
                 None,
                 paths,
                 args,

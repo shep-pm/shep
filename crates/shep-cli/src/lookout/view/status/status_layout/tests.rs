@@ -685,10 +685,113 @@ fn the_dog_job_item_draws_with_name_step_and_time_and_goes_before_the_hint() {
 
     // The narrowest bar that still shows the whole key hint. The item has
     // to be the thing that goes.
-    let (hint, _) = body_hint(&app);
+    let hint = hint_for(app.control(), app.settings().is_some(), app.grouping());
     let label = u16::try_from(CONTROL_ENABLED_LABEL.chars().count()).unwrap();
     let fits = u16::try_from(hint.chars().count()).expect("the hint has a width") + label + 1;
     let bar = rendered(&status_line(&app, fits));
     assert!(!bar.contains("installing otel"), "{bar:?}");
     assert!(bar.contains(&hint), "the whole hint survives: {bar:?}");
+}
+
+const A_HINT: &str = "hint: web has restarted 3 times. Try: shep enable bark";
+
+fn app_with_hint(control: Control) -> App {
+    let mut app = App::new(
+        Palette::detect(None, None, None),
+        control,
+        "/home/ada/.shep".to_string(),
+        Instant::now(),
+    );
+    let _ = app.update(Msg::Hint {
+        line: Some(A_HINT.to_owned()),
+    });
+    app
+}
+
+fn keys_of(app: &App) -> String {
+    hint_for(app.control(), app.settings().is_some(), app.grouping())
+}
+
+#[test]
+fn a_hint_follows_the_dashboard_keys_when_both_fit() {
+    let app = app_with_hint(Control::ReadOnly);
+    let keys = keys_of(&app);
+
+    let bar = rendered(&status_line(&app, 200));
+
+    assert!(
+        bar.starts_with(&format!("{keys}   {A_HINT}")),
+        "keys, three spaces, then the hint: {bar:?}"
+    );
+    assert!(bar.trim_end().ends_with("read-only"), "{bar:?}");
+}
+
+#[test]
+fn a_hint_that_does_not_fit_beside_the_keys_is_dropped_and_the_keys_stay_whole() {
+    let app = app_with_hint(Control::ReadOnly);
+    let keys = keys_of(&app);
+    let label = u16::try_from(READ_ONLY_LABEL.chars().count()).unwrap();
+    let keys_width = u16::try_from(keys.chars().count()).unwrap();
+    let hint_width = u16::try_from(A_HINT.chars().count()).unwrap();
+    let both = keys_width + 3 + hint_width + label + 1;
+
+    let fits = rendered(&status_line(&app, both));
+    assert!(fits.contains(A_HINT), "{fits:?}");
+
+    for width in [both - 1, keys_width + label + 1] {
+        let bar = rendered(&status_line(&app, width));
+        assert!(!bar.contains("hint:"), "width {width}: {bar:?}");
+        assert!(
+            bar.contains(&keys),
+            "width {width}: the keys are whole: {bar:?}"
+        );
+    }
+}
+
+#[test]
+fn a_prompt_a_notice_and_the_frozen_line_outrank_the_hint() {
+    let hint = Msg::Hint {
+        line: Some(A_HINT.to_owned()),
+    };
+
+    let mut prompt = armed_app(ActionVerb::Stop);
+    let _ = prompt.update(hint.clone());
+    assert!(!rendered(&status_line(&prompt, 300)).contains("hint:"));
+
+    let mut notice = App::new(
+        Palette::detect(None, None, None),
+        Control::ReadOnly,
+        "/home/ada/.shep".to_string(),
+        Instant::now(),
+    );
+    let _ = notice.update(hint.clone());
+    let _ = notice.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+    assert!(notice.notice().is_some());
+    assert!(!rendered(&status_line(&notice, 300)).contains("hint:"));
+
+    let mut filtered = filtered_app("web");
+    let _ = filtered.update(hint.clone());
+    assert!(!rendered(&status_line(&filtered, 300)).contains("hint:"));
+
+    let mut frozen = app_with_hint(Control::Allowed);
+    let _ = frozen.update(Msg::Frozen {
+        at_local: "2026-08-14 14:32:07".to_string(),
+        why: "the shepherd did not answer".to_string(),
+    });
+    let _ = frozen.update(hint);
+    let bar = rendered(&status_line(&frozen, 300));
+    assert!(bar.contains(FROZEN_HINT), "{bar:?}");
+    assert!(!bar.contains("hint:"), "{bar:?}");
+}
+
+#[test]
+fn the_settings_screen_keeps_its_keys_and_carries_no_hint() {
+    let mut app = app_in_settings();
+    let _ = app.update(Msg::Hint {
+        line: Some(A_HINT.to_owned()),
+    });
+
+    let bar = rendered(&status_line(&app, 300));
+
+    assert!(!bar.contains("hint:"), "{bar:?}");
 }

@@ -5,6 +5,7 @@ use crate::lookout::source::{HostSample, Local};
 use crate::lookout::tail::Tail;
 use crate::lookout::theme::Palette;
 use shep_core::paths::ShepPaths;
+use shep_core::protocol::ProcessInfo;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -42,6 +43,8 @@ pub(super) struct FakeLocal {
     pub(super) hosts: Arc<AtomicUsize>,
     pub(super) tails: Arc<AtomicUsize>,
     pub(super) log_sizes: Arc<AtomicUsize>,
+    pub(super) hint: Option<String>,
+    pub(super) hints: Arc<AtomicUsize>,
 }
 
 impl Local for FakeLocal {
@@ -58,6 +61,11 @@ impl Local for FakeLocal {
     fn log_sizes(&mut self, _out: Option<&Path>, _err: Option<&Path>) -> Option<u64> {
         self.log_sizes.fetch_add(1, Ordering::Relaxed);
         None
+    }
+
+    fn hint(&mut self, _flock: &[ProcessInfo]) -> Option<String> {
+        self.hints.fetch_add(1, Ordering::Relaxed);
+        self.hint.clone()
     }
 }
 

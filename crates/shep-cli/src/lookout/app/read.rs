@@ -76,6 +76,17 @@ impl App {
         self.remote_host.as_deref()
     }
 
+    /// The listing the dashboard holds, in id order.
+    pub fn flock_infos(&self) -> impl Iterator<Item = &shep_core::protocol::ProcessInfo> {
+        self.flock.values().map(|row| &row.info)
+    }
+
+    /// The hint line for the status bar, if one applies.
+    #[must_use]
+    pub fn hint_line(&self) -> Option<&str> {
+        self.hint.as_deref()
+    }
+
     /// The last host reading, or `None` if there has not been one.
     #[must_use]
     pub fn host(&self) -> Option<crate::lookout::source::HostSample> {

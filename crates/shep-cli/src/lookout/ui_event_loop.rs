@@ -4,7 +4,7 @@ use super::app::{
 };
 use super::batch_dispatch::{enable_refusal_message, send_batch};
 use super::pane::SheepDogEntry;
-use super::wiring::HEARTBEAT;
+use super::wiring::{HEARTBEAT, HINT_EVERY};
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::{Stream, StreamExt};
@@ -76,6 +76,10 @@ where
     // handles that end the run. Ended after the loop rather than by dropping
     // here, so the loop waits for the thread that holds the `cargo`.
     let mut dog: Option<DogRun> = None;
+    // Whether a snapshot has landed, and when the hint was last read. On the
+    // tokio clock so a paused one can drive the cadence.
+    let mut flock_seen = false;
+    let mut hint_read: Option<tokio::time::Instant> = None;
 
     loop {
         // One gate, read once, so the feed is refreshed before the frame that
@@ -228,6 +232,18 @@ where
                 if app.remote_host().is_none() {
                     let _ = app.update(Msg::Host { sample: local.host() });
                 }
+                // Once after the first snapshot, then at most every
+                // `HINT_EVERY`: it stats every sheep's log and reads
+                // `hints.json`, which one-second beats would repeat for
+                // nothing. Not over a host: its flock is not this machine's.
+                if flock_seen
+                    && app.remote_host().is_none()
+                    && hint_read.is_none_or(|at| at.elapsed() >= HINT_EVERY)
+                {
+                    hint_read = Some(tokio::time::Instant::now());
+                    let flock: Vec<_> = app.flock_infos().cloned().collect();
+                    let _ = app.update(Msg::Hint { line: local.hint(&flock) });
+                }
                 Some(Msg::Tick { now: Instant::now() })
             }
         };
@@ -237,6 +253,7 @@ where
         let Some(msg) = msg else { continue };
         // `Quit` leaves the loop below and nothing reads this after it.
         dirty = true;
+        flock_seen |= matches!(msg, Msg::Snapshot { .. });
 
         match app.update(msg) {
             // The job this left running is ended after the loop, where no
