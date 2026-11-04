@@ -2918,3 +2918,13 @@ With no flag, `shep install` downloads the binary a row hashes for the triple sh
 **Why:** #1430, under #1073. The dog settings standard makes `[<dog>]` the value for every sheep and a sheep's table the override, so a second dog-level place for one value is what it removes. Two places meant a reader had to ask which layer a key sat in, and `DogRuntime::sheep_settings` had to skip the default to keep a dog-wide key from reading as set in every table. No published dog reads the defaults layer and the maintainer's host has no `dog-defaults.json`, so the store is deleted rather than kept for an older form. The file is left rather than removed because it is the operator's data: the warning says where it went wrong and the operator decides what to move.
 
 `issue #1430 (parent #1073); verified crates/shep-core/src/config/app/dog_table.rs, crates/shep-daemon/src/boot/retired.rs, crates/shep-daemon/src/boot/tests/retired_files.rs, crates/shep-cli/src/commands/copy/address.rs, crates/shep-cli/src/commands/settings_write/defaults_routing_tests.rs`
+
+### The welcome names three dogs after the quick start, reversing "no dogs in the welcome"
+
+The welcome ends with a fixed block under the quick start: `shep install log-rotate`, `shep install discord` and `shep install deploy`, each with a few words on what it adds, then the `shep welcome` line. The text is a const in `crates/shep-cli/src/welcome.rs` and is never read from the index, because a first run may have no cache. The dogs block follows the rules in "The first-run welcome prints to stderr (suppressed under --format json / non-terminal); `shep welcome` itself prints to stdout unconditionally", which this amends: stderr on first run, silent under `--format json` and on a non-terminal, stdout for `shep welcome`. `on_first_run` gating and the JSON envelope are unchanged.
+
+**Why:** #1481, slice 1 of #1434 under #1075. The dogs-as-plugins spec kept dogs out of the welcome so it listed only what a first process needs. Since then `shep install` made a dog one command, and a fresh install that never hears dogs exist never types it. Three dogs fit the welcome's 80 columns and its one-screen shape. The welcome does not list every dog, because `shep install` with no name does that.
+
+**What it costs:** the names are fixed text, so an index that renames or drops one leaves the welcome naming a dog `shep install` cannot find. A test reads `web/public/dogs.json` and fails on a name no row carries as `adopt_as`, and it skips outside the workspace checkout. The welcome is longer by four lines.
+
+`verified crates/shep-cli/src/welcome.rs (DOGS, every_dog_the_welcome_names_is_in_the_index_under_that_adopt_as)`
