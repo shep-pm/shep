@@ -37,7 +37,7 @@ pub(super) struct Mode {
 
 /// One permission a dog declared that this shep knows.
 #[derive(Debug)]
-pub(super) struct Listed {
+pub(crate) struct Listed {
     pub(super) name: String,
     pub(super) required: bool,
     pub(super) reason: String,
@@ -45,7 +45,7 @@ pub(super) struct Listed {
 
 /// What a dog's manifest comes to once read by this shep.
 #[derive(Debug)]
-pub(super) enum Review {
+pub(crate) enum Review {
     /// No manifest: the dog declares nothing and keeps full access.
     Undeclared,
     /// A manifest, and the permissions in it this shep knows.
@@ -147,6 +147,97 @@ pub(super) fn review(manifest: Option<&Manifest>) -> Result<Review, UnknownRequi
     }
 }
 
+/// What the operator is shown and asked before a dog is granted anything.
+///
+/// Built apart from reading the answer, so the CLI and lookout's modal show
+/// the same words. The text comes from a manifest the operator is about to
+/// review, so it is not secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Prompt {
+    listing: String,
+    question: String,
+    grants: Option<Grants>,
+}
+
+impl Prompt {
+    /// A prompt from text already built.
+    pub(super) fn new(listing: String, question: String, grants: Option<Grants>) -> Self {
+        Self {
+            listing,
+            question,
+            grants,
+        }
+    }
+
+    /// What `review` asks the operator, or `None` when nothing is asked: a
+    /// dog that declares no permissions.
+    ///
+    /// `verb` is what the operator ran. `note` ends the listing, directly
+    /// above the question.
+    pub(crate) fn for_review(
+        name: &str,
+        verb: &str,
+        review: &Review,
+        note: Option<&str>,
+    ) -> Option<Self> {
+        let (grants, listing, question) = match review {
+            Review::Undeclared => (
+                None,
+                format!(
+                    "{name} declares nothing, runs with full access. {}",
+                    not_confined(name)
+                ),
+                format!("{verb} {name} with full access?"),
+            ),
+            Review::Declared { listed, .. } if listed.is_empty() => return None,
+            Review::Declared { listed, .. } => {
+                let lines = listed
+                    .iter()
+                    .map(|entry| {
+                        let kind = if entry.required {
+                            "required"
+                        } else {
+                            "optional"
+                        };
+                        format!("  {} ({kind}): {}", entry.name, entry.reason)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                (
+                    Some(Grants::from_names(
+                        listed.iter().map(|entry| entry.name.clone()),
+                    )),
+                    format!(
+                        "{name} declares these permissions:\n{lines}\n{}",
+                        not_confined(name)
+                    ),
+                    format!("{verb} {name} and grant it these?"),
+                )
+            }
+        };
+        let listing = match note {
+            Some(note) => format!("{listing}\n{note}"),
+            None => listing,
+        };
+        Some(Self::new(listing, question, grants))
+    }
+
+    /// The permissions with their reasons, then the note if there is one.
+    pub(crate) fn listing(&self) -> &str {
+        &self.listing
+    }
+
+    /// The question, without the `[y/N] ` the CLI appends.
+    pub(crate) fn question(&self) -> &str {
+        &self.question
+    }
+
+    /// What a yes grants; `None` for a dog that declared nothing.
+    pub(crate) fn grants(&self) -> Option<&Grants> {
+        self.grants.as_ref()
+    }
+}
+
 /// Shows the operator what `name` declares and asks, or applies `--yes`, or
 /// refuses for want of a terminal.
 ///
@@ -159,6 +250,7 @@ pub(super) fn review(manifest: Option<&Manifest>) -> Result<Review, UnknownRequi
 /// The [`ExitCode`] already reported to `streams`: [`ExitCode::Usage`] with
 /// no terminal and no `--yes`, [`ExitCode::Failure`] when the answer could
 /// not be read.
+#[cfg(test)]
 pub(super) fn consent(
     streams: &mut Streams<'_>,
     name: &str,
@@ -168,55 +260,50 @@ pub(super) fn consent(
     mode: Mode,
     reader: &mut dyn BufRead,
 ) -> Result<Verdict, ExitCode> {
-    let (granted, listing, question) = match review {
-        Review::Undeclared => (
-            None,
-            format!(
-                "{name} declares nothing, runs with full access. {}",
-                not_confined(name)
-            ),
-            format!("{verb} {name} with full access? [y/N] "),
-        ),
-        Review::Declared {
-            listed, dropped, ..
-        } => {
-            for dropped in dropped {
-                streams.aside(
-                    PERMISSION_DROPPED_NOTICE,
-                    &format!(
-                        "{name} asks for the optional permission `{dropped}`, which this shep \
-                         does not know; it is dropped and not granted"
-                    ),
-                );
-            }
-            let grants = Grants::from_names(listed.iter().map(|entry| entry.name.clone()));
-            if listed.is_empty() {
-                if let Some(note) = note {
-                    streams.aside(PERMISSIONS_NOTICE, note);
-                }
-                return Ok(Verdict::Grant(Some(grants)));
-            }
-            let lines = listed
-                .iter()
-                .map(|entry| {
-                    let kind = if entry.required {
-                        "required"
-                    } else {
-                        "optional"
-                    };
-                    format!("  {} ({kind}): {}", entry.name, entry.reason)
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            (
-                Some(grants),
-                format!(
-                    "{name} declares these permissions:\n{lines}\n{}",
-                    not_confined(name)
+    consent_asking(
+        streams,
+        name,
+        verb,
+        review,
+        note,
+        mode,
+        &mut |streams, prompt| ask_aloud(streams, prompt, reader),
+    )
+}
+
+/// Prints `prompt`'s question with the `[y/N] ` suffix, then reads a line.
+fn ask_aloud(streams: &mut Streams<'_>, prompt: &Prompt, reader: &mut dyn BufRead) -> Answer {
+    streams.aside("confirm", &format!("{} [y/N] ", prompt.question()));
+    read_answer(reader)
+}
+
+/// Shows `name`'s listing and gets the answer from `ask`, as `consent` does
+/// for a reader.
+fn consent_asking(
+    streams: &mut Streams<'_>,
+    name: &str,
+    verb: &str,
+    review: &Review,
+    note: Option<&str>,
+    mode: Mode,
+    ask: &mut dyn FnMut(&mut Streams<'_>, &Prompt) -> Answer,
+) -> Result<Verdict, ExitCode> {
+    if let Review::Declared { dropped, .. } = review {
+        for dropped in dropped {
+            streams.aside(
+                PERMISSION_DROPPED_NOTICE,
+                &format!(
+                    "{name} asks for the optional permission `{dropped}`, which this shep \
+                     does not know; it is dropped and not granted"
                 ),
-                format!("{verb} {name} and grant it these? [y/N] "),
-            )
+            );
         }
+    }
+    let Some(prompt) = Prompt::for_review(name, verb, review, note) else {
+        if let Some(note) = note {
+            streams.aside(PERMISSIONS_NOTICE, note);
+        }
+        return Ok(Verdict::Grant(Some(Grants::default())));
     };
     let go = decide(Context {
         dry_run: false,
@@ -234,14 +321,9 @@ pub(super) fn consent(
             ),
         ));
     }
-    let listing = match note {
-        Some(note) => format!("{listing}\n{note}"),
-        None => listing,
-    };
-    streams.aside(PERMISSIONS_NOTICE, &listing);
+    streams.aside(PERMISSIONS_NOTICE, prompt.listing());
     if go == Go::Ask {
-        streams.aside("confirm", &question);
-        match read_answer(reader) {
+        match ask(streams, &prompt) {
             Answer::Yes => {}
             Answer::No => return Ok(Verdict::Declined),
             Answer::Failed(reason) => {
@@ -252,32 +334,78 @@ pub(super) fn consent(
             }
         }
     }
-    Ok(Verdict::Grant(granted))
+    Ok(Verdict::Grant(prompt.grants().cloned()))
 }
 
-/// Where the answer is read from: a terminal's stdin in production, a canned
-/// reader in a test.
-pub(super) struct Input {
-    /// Whether the reader is a terminal there is someone at.
-    pub(super) is_terminal: bool,
-    /// The line the operator types.
-    pub(super) reader: Box<dyn BufRead + Send>,
+/// Where the answer comes from: a terminal's stdin in production, a canned
+/// reader in a test, or a callback a modal answers through.
+pub(crate) struct Input(Source);
+
+enum Source {
+    Reading {
+        is_terminal: bool,
+        reader: Box<dyn BufRead + Send>,
+    },
+    Answering(Box<dyn FnMut(&Prompt) -> bool + Send>),
 }
 
 impl Input {
     /// This process's stdin.
     pub(super) fn stdin() -> Self {
-        Self {
-            is_terminal: std::io::stdin().is_terminal(),
-            reader: Box::new(std::io::BufReader::new(std::io::stdin())),
+        Self::reading(
+            std::io::stdin().is_terminal(),
+            std::io::BufReader::new(std::io::stdin()),
+        )
+    }
+
+    /// Answers read as a line from `reader`; `is_terminal` is whether there
+    /// is someone at it.
+    pub(super) fn reading(is_terminal: bool, reader: impl BufRead + Send + 'static) -> Self {
+        Self(Source::Reading {
+            is_terminal,
+            reader: Box::new(reader),
+        })
+    }
+
+    /// Answers by calling `answer` with the prompt: true is a yes, false a
+    /// no. `answer` blocks, so a caller on an async runtime runs the install
+    /// on a blocking thread.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "lookout's install modal answers through it")
+    )]
+    pub(crate) fn answering(answer: impl FnMut(&Prompt) -> bool + Send + 'static) -> Self {
+        Self(Source::Answering(Box::new(answer)))
+    }
+
+    /// Whether there is someone to ask.
+    pub(super) fn is_terminal(&self) -> bool {
+        match &self.0 {
+            Source::Reading { is_terminal, .. } => *is_terminal,
+            Source::Answering(_) => true,
+        }
+    }
+
+    /// Asks `prompt`'s question. A reader is shown it on `streams` first; a
+    /// callback is handed the prompt and shows it itself.
+    pub(super) fn ask(&mut self, streams: &mut Streams<'_>, prompt: &Prompt) -> Answer {
+        match &mut self.0 {
+            Source::Reading { reader, .. } => ask_aloud(streams, prompt, reader),
+            Source::Answering(answer) => {
+                if answer(prompt) {
+                    Answer::Yes
+                } else {
+                    Answer::No
+                }
+            }
         }
     }
 }
 
-/// [`consent`], asking at `input` with `--yes` as `yes`.
+/// [`consent_asking`], asking at `input` with `--yes` as `yes`.
 ///
 /// # Errors
-/// As [`consent`].
+/// As [`consent_asking`].
 pub(super) fn consent_from(
     streams: &mut Streams<'_>,
     name: &str,
@@ -289,9 +417,17 @@ pub(super) fn consent_from(
 ) -> Result<Verdict, ExitCode> {
     let mode = Mode {
         yes,
-        stdin_is_terminal: input.is_terminal,
+        stdin_is_terminal: input.is_terminal(),
     };
-    consent(streams, name, verb, review, note, mode, &mut input.reader)
+    consent_asking(
+        streams,
+        name,
+        verb,
+        review,
+        note,
+        mode,
+        &mut |streams, prompt| input.ask(streams, prompt),
+    )
 }
 
 /// The sentence every prompt carries.
