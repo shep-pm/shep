@@ -22,6 +22,7 @@ mod fixtures;
 mod layout;
 mod list;
 mod panel;
+mod status;
 
 pub use draw::draw_pane;
 // Named by path only from tests: `lookout::app` and `view::fixtures` both

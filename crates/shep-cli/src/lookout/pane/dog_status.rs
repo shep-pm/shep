@@ -1,10 +1,12 @@
 //! What a dog's `shep.pane` pull left on its config pane.
 //!
-//! Held, not drawn: the status tab that reads it comes later. The pane is
-//! rebuilt on every re-read of the dog's section, so this rides across the
-//! rebuild beside the cursor and the open tables.
+//! The status tab draws it. The pane is rebuilt on every re-read of the dog's
+//! section, so this rides across the rebuild, with the open tab and the
+//! cursor, beside the open tables.
 
 use shep_core::dogs::pane::Pane;
+
+use super::status::{StatusView, Step, Tab, row_count};
 
 /// What a dog's manifest says about its pane: the names a pane is checked
 /// against.
@@ -42,6 +44,8 @@ pub struct DogStatus {
     failed: Option<String>,
     /// Whether a pull is out and has not landed.
     pulling: bool,
+    /// The open tab and the status tab's cursor.
+    view: StatusView,
 }
 
 impl DogStatus {
@@ -53,6 +57,7 @@ impl DogStatus {
             state: PaneState::Waiting,
             failed: None,
             pulling: false,
+            view: StatusView::default(),
         }
     }
 
@@ -68,7 +73,7 @@ impl DogStatus {
         not(test),
         expect(
             dead_code,
-            reason = "the status tab draws the pull, and has not landed"
+            reason = "the pane's actions and refresh read it, and have not landed"
         )
     )]
     pub fn declared(&self) -> &DeclaredPane {
@@ -77,13 +82,6 @@ impl DogStatus {
 
     /// How the pull stands.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the status tab draws the pull, and has not landed"
-        )
-    )]
     pub fn state(&self) -> &PaneState {
         &self.state
     }
@@ -92,13 +90,6 @@ impl DogStatus {
     /// good pane. [`None`] otherwise: an [`PaneState::Unavailable`] carries
     /// its own reason.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the status tab draws the pull, and has not landed"
-        )
-    )]
     pub fn failed(&self) -> Option<&str> {
         self.failed.as_deref()
     }
@@ -116,6 +107,7 @@ impl DogStatus {
     /// it; a failure with none held is [`PaneState::Unavailable`].
     pub(in crate::lookout) fn land(&mut self, answer: Result<Pane, String>) {
         self.pulling = false;
+        let landed = answer.is_ok();
         match answer {
             Ok(pane) => {
                 self.state = PaneState::Ready(pane);
@@ -125,6 +117,41 @@ impl DogStatus {
                 self.failed = Some(reason);
             }
             Err(reason) => self.state = PaneState::Unavailable(reason),
+        }
+        if landed || !matches!(self.state, PaneState::Ready(_)) {
+            self.view.settle(self.rows());
+        }
+    }
+
+    /// The open tab.
+    #[must_use]
+    pub fn tab(&self) -> Tab {
+        self.view.tab()
+    }
+
+    /// Opens the tab that is not open.
+    pub(in crate::lookout) fn switch_tab(&mut self) {
+        self.view.switch();
+    }
+
+    /// The row the status tab's cursor is on, counted over every table's rows
+    /// in order. [`None`] while the pane holds no row.
+    #[must_use]
+    pub fn cursor(&self) -> Option<usize> {
+        self.view.cursor()
+    }
+
+    /// Moves the status tab's cursor.
+    pub(in crate::lookout) fn step(&mut self, step: Step) {
+        let rows = self.rows();
+        self.view.step(step, rows);
+    }
+
+    /// How many rows the cursor walks.
+    fn rows(&self) -> usize {
+        match &self.state {
+            PaneState::Ready(pane) => row_count(pane),
+            PaneState::Waiting | PaneState::Unavailable(_) => 0,
         }
     }
 }

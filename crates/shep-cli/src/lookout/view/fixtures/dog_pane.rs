@@ -1,10 +1,11 @@
 //! A dog's config pane, and the TOML section behind it.
 
-use shep_core::protocol::{DogSource, ProcessInfo, Response};
+use shep_core::dogs::pane::Pane;
+use shep_core::protocol::{ActionOutcome, ActionReply, DogSource, ProcessInfo, Response};
 use shep_core::status::ProcStatus;
 
 use crate::lookout::app::{App, Control, Effect, KeyPress, Msg, Sent};
-use crate::lookout::pane::{EntryBody, PaneRow};
+use crate::lookout::pane::{DeclaredPane, EntryBody, PaneRow};
 
 use super::flock::{app_with, flock_of};
 use super::palette::plain;
@@ -456,5 +457,77 @@ pub fn app_in_dog_pane_with_two_edits() -> App {
         2,
         "the fixture files two edits"
     );
+    app
+}
+
+/// What a dog that answers `shep.pane` with `pane` replies, as the shepherd
+/// relays it.
+pub fn pane_reply(pane: &Pane) -> ActionOutcome {
+    ActionOutcome::Replied {
+        body: pane.body().expect("the fixture pane is readable"),
+    }
+}
+
+/// An adopted `paddock` whose manifest declares a pane, config pane open, and
+/// its `shep.pane` pull answered with `outcome`, or left out on the wire when
+/// that is [`None`], which leaves the status tab waiting.
+///
+/// Opened the way the event loop opens one: `e`, the schema, the section, the
+/// manifest, then the reply to the pull.
+pub fn app_in_pane_dog(outcome: Option<ActionOutcome>) -> App {
+    let paddock = ProcessInfo::builder(92, "paddock", ProcStatus::Online)
+        .pid(Some(92_000))
+        .dog(Some(DogSource::Adopted {
+            grants: None,
+            path: "/opt/paddock".to_string(),
+            channel: true,
+            events: Vec::new(),
+        }))
+        .build();
+    let mut app = app_with(vec![paddock], plain());
+    app.set_control_for_tests(Control::Allowed);
+    let Effect::LoadDogPane { name, adopted_path } = app.update(Msg::Key(KeyPress::Edit)) else {
+        panic!("`e` on a dog row opens a dog pane");
+    };
+    app.update(Msg::DogPane {
+        name,
+        adopted_path,
+        env_keys: Vec::new(),
+        result: Ok(serde_json::json!({
+            "type": "object",
+            "properties": { "ratio": { "type": "number" } },
+        })),
+    });
+    app.update(Msg::Replied {
+        sent: Sent::DogSection {
+            name: "paddock".to_string(),
+        },
+        result: Ok(Response::DogSection {
+            toml: "ratio = 1.5\n".to_string().into(),
+        }),
+    });
+    // The first opening of a pane: the app counts them from one.
+    let opening = 1;
+    app.update(Msg::DogDeclaresPane {
+        name: "paddock".to_string(),
+        opening,
+        declared: Some(DeclaredPane {
+            actions: vec!["revoke".to_string()],
+            events: vec!["lease.changed".to_string()],
+        }),
+    });
+    if let Some(outcome) = outcome {
+        app.update(Msg::Replied {
+            sent: Sent::DogPane {
+                name: "paddock".to_string(),
+                opening,
+            },
+            result: Ok(Response::Triggered(vec![ActionReply {
+                id: 92,
+                name: "paddock".to_string(),
+                outcome,
+            }])),
+        });
+    }
     app
 }
