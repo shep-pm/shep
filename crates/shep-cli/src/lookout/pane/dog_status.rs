@@ -163,7 +163,7 @@ impl DogStatus {
     /// the pane is ready.
     pub(in crate::lookout) fn keys(&self) -> Vec<PaneKey> {
         match &self.state {
-            PaneState::Ready(pane) => keyed(pane, &self.declared.actions),
+            PaneState::Ready(pane) => keyed(pane, &self.declared().actions),
             PaneState::Waiting | PaneState::Unavailable(_) => Vec::new(),
         }
     }
@@ -173,7 +173,7 @@ impl DogStatus {
         self.keys()
             .into_iter()
             .map(|key| key.action.action)
-            .filter(|name| !self.declared.actions.contains(name))
+            .filter(|name| !self.declared().actions.contains(name))
     }
 
     /// The key of the row the cursor is on. [`None`] while the pane holds no

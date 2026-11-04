@@ -56,7 +56,7 @@ pub(crate) use env::{ArmedEnv, EnvSubmit};
 pub(in crate::lookout) use fields::{DEFAULT, UNSET};
 pub(crate) use fields::{resolved_display, sheep_fields};
 pub use list::{ListPane, ListRow};
-pub(in crate::lookout) use status::{PaneKey, RESERVED, Step, Tab, follow_start, keyed, row_at};
+pub(in crate::lookout) use status::{PaneKey, RESERVED, Step, Tab, follow_start};
 pub(in crate::lookout) use tree::TreeRow;
 pub(in crate::lookout) use types::PathStep;
 pub use types::{FieldValue, Lock, PaneEdit, PaneRow, PaneTarget, SectionWrite};

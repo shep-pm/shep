@@ -14,8 +14,7 @@ use super::textbox::TextEdit;
 /// Only `KeyEventKind::Press` counts: a repeat or release would fire the
 /// action again. `Ctrl-C` binds in every mode, since raw mode delivers it
 /// as an ordinary key event. `Ctrl-D`/`Ctrl-U` page only in `Normal`. In
-/// `Pane` a plain letter other than the [`RESERVED`] ones is a
-/// [`KeyPress::TextChar`] and the rest map as in `Normal`.
+/// `Pane` a plain letter, but a [`RESERVED`] one, is a [`KeyPress::TextChar`].
 #[must_use]
 pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
     let Event::Key(key) = event else {

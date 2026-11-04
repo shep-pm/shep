@@ -179,9 +179,9 @@ pub enum Sent {
     /// operator. Raised once the dog's manifest is read and declares `pane`.
     ///
     /// A `Request::Trigger`, so the pull shares the trigger path and its
-    /// deadline with every later pane action. The only variant the link task
-    /// does not await inline: a dog that hangs holds its reply for the whole
-    /// trigger deadline.
+    /// deadline with every pane action. The link task does not await it
+    /// inline, nor [`Sent::DogPaneAction`]: a dog that hangs holds its reply
+    /// for the whole trigger deadline.
     DogPane {
         /// The dog asked.
         name: String,
