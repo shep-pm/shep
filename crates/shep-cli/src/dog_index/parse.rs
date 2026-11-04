@@ -23,7 +23,8 @@ fn version_is_supported(version: &Value) -> bool {
 ///
 /// Untyped JSON validated by hand: a `serde` derive would make one entry
 /// with a wrong field type fail the whole document. A bad entry is counted
-/// in [`Index::skipped`] and dropped, never an error.
+/// in [`Index::skipped`] and dropped, never an error. A `shep` that is
+/// missing or not a version is `None`, for the same reason.
 ///
 /// # Errors
 /// - [`IndexError::Malformed`] if `bytes` are not JSON, or not UTF-8.
@@ -68,6 +69,10 @@ pub fn parse_index(bytes: &[u8]) -> Result<Index, IndexError> {
         dogs,
         skipped,
         sanitised,
+        shep: document
+            .get("shep")
+            .and_then(Value::as_str)
+            .and_then(|version| semver::Version::parse(version).ok()),
     })
 }
 
@@ -879,6 +884,49 @@ pub(super) mod tests {
             assert_eq!(index.skipped, 1, "{bad} was accepted");
             assert_eq!(index.dogs.len(), 1, "{bad} took its neighbour with it");
             assert_eq!(index.dogs[0].package, "shep-watchdog");
+        }
+    }
+
+    /// `wrap_index` with a top-level `shep` added after `version`.
+    fn index_naming_shep(shep: serde_json::Value) -> String {
+        let mut document: serde_json::Value =
+            serde_json::from_str(&wrap_index(vec![valid_entry()])).expect("fixture is json");
+        document["shep"] = shep;
+        document.to_string()
+    }
+
+    #[test]
+    fn a_top_level_shep_version_is_read() {
+        let index =
+            parse_index(index_naming_shep(serde_json::json!("0.24.0")).as_bytes()).expect("parses");
+
+        assert_eq!(index.shep, Some(semver::Version::new(0, 24, 0)));
+        assert_eq!(index.dogs.len(), 1);
+    }
+
+    #[test]
+    fn a_missing_shep_version_is_none() {
+        let index = parse_index(wrap_index(vec![valid_entry()]).as_bytes()).expect("parses");
+
+        assert_eq!(index.shep, None);
+        assert_eq!(index.dogs.len(), 1);
+    }
+
+    #[test]
+    fn a_shep_that_is_not_a_version_is_ignored_and_the_dogs_still_list() {
+        for bad in [
+            serde_json::json!("latest"),
+            serde_json::json!("0.24"),
+            serde_json::json!(""),
+            serde_json::json!(24),
+            serde_json::json!(null),
+            serde_json::json!(["0.24.0"]),
+        ] {
+            let index = parse_index(index_naming_shep(bad.clone()).as_bytes()).expect("parses");
+
+            assert_eq!(index.shep, None, "{bad} was read as a version");
+            assert_eq!(index.dogs.len(), 1, "{bad} cost the index its dogs");
+            assert_eq!(index.skipped, 0);
         }
     }
 

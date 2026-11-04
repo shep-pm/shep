@@ -213,6 +213,9 @@ pub struct Index {
     /// How many surviving entries had something stripped. Once per entry,
     /// never once per field, and never for a skipped entry.
     pub sanitised: usize,
+    /// The latest released shep the document names, or `None` when it names
+    /// none or one that is not a semver version.
+    pub shep: Option<semver::Version>,
 }
 
 /// Why reading the index failed outright, as opposed to the per-entry
@@ -605,6 +608,43 @@ mod tests {
         assert_eq!(needs_of("log-rotate"), [Need::Logs]);
         assert_eq!(needs_of("discord"), [Need::Alerts]);
         assert_eq!(needs_of("deploy"), []);
+    }
+
+    /// The published schema's top-level `shep`: optional, a semver string.
+    ///
+    /// Skips outside the workspace checkout, see
+    /// [`read_workspace_web_file`].
+    #[test]
+    fn the_schema_declares_the_top_level_shep() {
+        let Some(schema) = read_workspace_web_file("public/dogs.schema.json") else {
+            return;
+        };
+        let schema: Value = serde_json::from_str(&schema).expect("dogs.schema.json is valid json");
+
+        let shep = &schema["properties"]["shep"];
+        assert_eq!(shep["type"], "string", "{shep}");
+        assert!(shep["pattern"].is_string(), "{shep}");
+
+        let required = schema["required"].as_array().expect("required is a list");
+        assert!(!required.iter().any(|key| key == "shep"), "{required:?}");
+    }
+
+    /// The release pull request writes the workspace version into the
+    /// index, so a checkout names the version it builds.
+    ///
+    /// Skips outside the workspace checkout, see
+    /// [`read_workspace_web_file`].
+    #[test]
+    fn the_live_index_names_the_version_this_build_is() {
+        let Some(live) = read_workspace_web_file("public/dogs.json") else {
+            return;
+        };
+        let index = parse_index(live.as_bytes()).expect("the live index parses");
+
+        assert_eq!(
+            index.shep,
+            Some(env!("CARGO_PKG_VERSION").parse().expect("a semver")),
+        );
     }
 
     /// It is the one URL an operator never types, so nothing else would

@@ -13,6 +13,11 @@
       "const": 1,
       "description": "The wrapper's own format version, not an entry's. Bump only alongside a shep release that understands the new shape."
     },
+    "shep": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "description": "The latest released shep, a semver version. The release pull request writes it. Optional: a shep reads an index without it."
+    },
     "dogs": {
       "type": "array",
       "items": {
