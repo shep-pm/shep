@@ -81,9 +81,9 @@ async fn a_revoke_made_while_the_question_is_open_is_not_undone_by_the_yes() {
     };
     let elsewhere = paths.clone();
     let after = revoked.clone();
-    let mut input = Input {
-        is_terminal: true,
-        reader: Box::new(AnswerAfter {
+    let mut input = Input::reading(
+        true,
+        AnswerAfter {
             meanwhile: Some(move || {
                 ShepToml::try_edit(&elsewhere.daemon_config, |cfg| {
                     cfg.set_grant_record("bark", &after)
@@ -91,8 +91,8 @@ async fn a_revoke_made_while_the_question_is_open_is_not_undone_by_the_yes() {
                 .unwrap();
             }),
             typed: Cursor::new(b"y\n"),
-        }),
-    };
+        },
+    );
     let mut out = Vec::new();
     let mut err = Vec::new();
 

@@ -189,10 +189,7 @@ async fn crates_io(body: String) -> (String, tokio::sync::mpsc::UnboundedReceive
 }
 
 pub(super) fn typing(typed: Option<&'static str>) -> Input {
-    Input {
-        is_terminal: typed.is_some(),
-        reader: Box::new(Cursor::new(typed.unwrap_or("").as_bytes())),
-    }
+    Input::reading(typed.is_some(), Cursor::new(typed.unwrap_or("").as_bytes()))
 }
 
 pub(super) fn args(yes: bool, no_enable: bool) -> InstallArgs {
