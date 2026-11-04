@@ -82,6 +82,58 @@ fn write_dog(dir: &Path, answer: &str) -> PathBuf {
     binary
 }
 
+/// Writes an executable `/bin/sh` dog that answers `--shep-manifest` with
+/// `manifest` and exits 0 on any other run.
+fn write_manifest_dog(dir: &Path, manifest: &str) -> PathBuf {
+    let binary = dir.join("shep-paddock");
+    let script = format!(
+        "#!/bin/sh\nif [ \"$1\" = --shep-manifest ]; then printf '%s' '{manifest}'; fi\nexit 0\n"
+    );
+    std::fs::write(&binary, script).unwrap();
+    let mut mode = std::fs::metadata(&binary).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o755);
+    std::fs::set_permissions(&binary, mode).unwrap();
+    binary
+}
+
+/// A pane is answered over the channel, so a dog that asked for one without a
+/// channel has none. `adopt` says so and adopts the dog anyway: unlike
+/// `validate` without a channel, this is a screen the operator loses rather
+/// than a check shep cannot run.
+#[tokio::test]
+async fn adopt_says_when_a_dog_asks_for_a_pane_it_cannot_have() {
+    for (manifest, said) in [
+        (
+            r#"{"manifest":3,"name":"paddock","version":"0.1.0","protocol":12,"pane":true}"#,
+            true,
+        ),
+        (
+            r#"{"manifest":3,"name":"paddock","version":"0.1.0","protocol":12,"channel":true,"pane":true}"#,
+            false,
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+        let args = AdoptArgs {
+            yes: true,
+            name: Some("paddock".to_string()),
+            path: write_manifest_dog(dir.path(), manifest),
+        };
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let code = adopt(&mut streams(&mut out, &mut err), &paths, &args).await;
+
+        assert_eq!(code, ExitCode::Success);
+        let notices = String::from_utf8(err).unwrap();
+        assert_eq!(
+            notices.contains("dog_pane_without_channel"),
+            said,
+            "the operator hears which pane the dog will not have: {notices}"
+        );
+    }
+}
+
 /// Through `adopt` itself, so the ask travels from a real probe answer
 /// to `shep.toml`. A dog that does not ask is the control.
 #[tokio::test]
