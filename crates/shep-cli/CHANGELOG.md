@@ -13,6 +13,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.2] - 2026-11-04
+
+### Added
+
+- Shep lookout catalogue opens on the dog catalogue
+- Uninstalled index dogs show greyed in the settings dogs list and open their catalogue entry
+- Install a dog from the catalogue
+- The hints suggest shep upgrade when the cached index names a newer shep
+- Upgrade and delete a dog from the catalogue
+- The lookout status bar carries the same hint as shep flock
+- Pull a dog's pane with shep.pane when its config pane opens and hold the answer
+- A pane dog opens on a status tab that draws its sections, with settings second
+- Assign each pane action a letter from its label
+- Subscribe to dog events
+- A pane input mode that hands plain letters to a dog's actions
+- Refresh a dog's status tab on the events its sections name
+- Run a dog's pane action from its status tab
+- Say when a section names an event the dog does not declare
+- The status tab's footer lists the pane's action keys
+- Show a pane action that answers with an id as running in the status bar
+
+### Changed
+
+- Let the running job's verb word the wait and quit modals
+
+### Fixed
+
+- One Escape leaves an available dog's entry, no read-only refusal on its row, the category survives a narrow terminal
+- D on an available dog or browse dogs row gives no read-only refusal
+- Keep lookout's positionals and names like catalogue and help
+- Keep every name lookout had before its catalogue subcommand
+- Link the dog job effect to a name rustdoc can resolve
+- Refuse a reserved action name in shep trigger before sending
+- End a dog job cleanly when the dashboard quits
+- The settings screen's status bar carries no flock hint
+- Key a dog pane's pull to its opening, give it its own connection, and answer one the link lost
+- Scroll a status tab past its cursor so rows no cursor reaches can be read
+- Mark a status-tab pull due on relink, and house the refresh tests under dog_pane::tests
+- Settle review findings on the pane action flow
+- End a long action whose result came before its reply
+- Keep the pane footer's wording for actions that are not long
+
+
 ## [0.24.1] - 2026-11-04
 
 ### Added
