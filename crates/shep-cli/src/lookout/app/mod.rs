@@ -512,6 +512,8 @@ pub struct App {
     /// arrive after the job it was asked about has landed, and a yes to a
     /// question still on screen must still quit.
     dog_quit: Option<u64>,
+    /// The tag and dog of the delete question lookout is asking, or `None`.
+    dog_delete: Option<(u64, String)>,
     /// The next modal tag.
     ///
     /// Shared by every modal owner so no two open modals carry the same tag,

@@ -198,17 +198,36 @@ pub(super) fn secrets_hint(control: Control) -> String {
     }
 }
 
-/// The catalogue's own key hint: the list moves and opens, an entry only
-/// goes back, and an entry shep can build names `enter` as its install key.
-///
-/// `installable` is [`App::can_install`] for the open row: an installed dog,
-/// an instructions-only one and a closed gate each have no install to name.
-pub(super) const fn catalogue_hint(entry_open: bool, installable: bool) -> &'static str {
-    match (entry_open, installable) {
-        (true, true) => "esc back   enter install   h help   q quit",
-        (true, false) => "esc back   h help   q quit",
-        (false, _) => "esc close   j/k select   g/G first/last   enter open   h help   q quit",
+/// The actions an open catalogue entry offers, each true only where it
+/// applies to that row.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct EntryActions {
+    /// [`App::can_install`] for the open row.
+    pub install: bool,
+    /// [`App::can_upgrade`] for the open row.
+    pub upgrade: bool,
+    /// [`App::can_delete`] for the open row.
+    pub delete: bool,
+}
+
+/// The catalogue's own key hint: the list moves and opens, and an entry names
+/// `enter` and `D` only for the actions that apply to its row.
+pub(super) fn catalogue_hint(entry: Option<EntryActions>) -> String {
+    let Some(actions) = entry else {
+        return "esc close   j/k select   g/G first/last   enter open   h help   q quit".to_owned();
+    };
+    let mut hint = String::from("esc back");
+    if actions.install {
+        hint.push_str("   enter install");
     }
+    if actions.upgrade {
+        hint.push_str("   enter upgrade");
+    }
+    if actions.delete {
+        hint.push_str("   D delete");
+    }
+    hint.push_str("   h help   q quit");
+    hint
 }
 
 /// The config pane's own key hint.

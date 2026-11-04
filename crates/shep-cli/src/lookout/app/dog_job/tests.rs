@@ -17,6 +17,11 @@ use crate::lookout::view::fixtures;
 
 /// A dashboard with the gate open and one catalogue row landed.
 fn app_with_row(dog: AvailableDog, state: DogState) -> App {
+    app_with_version(dog, "0.2.4", state)
+}
+
+/// [`app_with_row`] with the row's VERSION cell as given.
+fn app_with_version(dog: AvailableDog, version: &str, state: DogState) -> App {
     let t0 = Instant::now();
     let mut app = App::new(
         crate::lookout::theme::Palette::detect(None, None, None),
@@ -33,7 +38,7 @@ fn app_with_row(dog: AvailableDog, state: DogState) -> App {
         result: Ok(Box::new(CatalogueRead {
             rows: vec![CatalogueRow {
                 dog,
-                version: "0.2.4".to_owned(),
+                version: version.to_owned(),
                 state,
             }],
             refreshing: false,
@@ -163,6 +168,211 @@ fn an_installed_or_uninstallable_entry_starts_nothing() {
     manual.update(Msg::Key(KeyPress::Confirm));
     assert_eq!(manual.update(Msg::Key(KeyPress::Confirm)), Effect::None);
     assert_eq!(manual.dog_job_line(), None);
+}
+
+#[test]
+fn enter_on_a_row_behind_the_index_starts_an_upgrade_and_on_a_current_one_nothing() {
+    let mut behind = app_with_version(cargo_dog("otel"), "0.2.1 \u{2192} 0.2.4", DogState::Enabled);
+    behind.update(Msg::Key(KeyPress::Confirm));
+    let authority = WriteAuthority::granted(&behind).expect("the gate is open");
+    assert_eq!(
+        behind.update(Msg::Key(KeyPress::Confirm)),
+        Effect::StartDogJob {
+            job: Job::Upgrade {
+                name: "otel".to_owned(),
+            },
+            authority,
+        }
+    );
+    assert_eq!(
+        behind.dog_job_line().as_deref(),
+        Some("upgrading otel  starting  0s")
+    );
+
+    let mut current = app_with_version(cargo_dog("otel"), "0.2.4", DogState::Installed);
+    current.update(Msg::Key(KeyPress::Confirm));
+    assert_eq!(current.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+    assert_eq!(current.dog_job_line(), None);
+}
+
+/// An entry open on an installed `otel`, with the gate open.
+fn installed_entry() -> App {
+    let mut app = app_with_version(cargo_dog("otel"), "0.2.4", DogState::Enabled);
+    app.update(Msg::Key(KeyPress::Confirm));
+    app
+}
+
+#[test]
+fn d_on_an_installed_entry_asks_and_a_yes_starts_the_delete() {
+    let mut app = installed_entry();
+    assert_eq!(app.update(Msg::Key(KeyPress::ArmDelete)), Effect::None);
+    match app.modal() {
+        Some(Modal::Confirm { question, .. }) => assert_eq!(
+            question.as_str(),
+            "Delete otel? An adopted dog with no receipt keeps its file."
+        ),
+        other => panic!("expected the delete question, got {other:?}"),
+    }
+    assert_eq!(app.dog_job_line(), None, "nothing runs before the answer");
+
+    app.note_modal_reach(Some(0));
+    let authority = WriteAuthority::granted(&app).expect("the gate is open");
+    assert_eq!(
+        app.update(Msg::Key(KeyPress::Confirm)),
+        Effect::StartDogJob {
+            job: Job::Delete {
+                name: "otel".to_owned(),
+            },
+            authority,
+        }
+    );
+    assert_eq!(
+        app.dog_job_line().as_deref(),
+        Some("deleting otel  starting  0s")
+    );
+}
+
+#[test]
+fn a_no_to_the_delete_question_starts_nothing() {
+    let mut app = installed_entry();
+    app.update(Msg::Key(KeyPress::ArmDelete));
+    app.note_modal_reach(Some(0));
+
+    assert_eq!(app.update(Msg::Key(KeyPress::Escape)), Effect::None);
+    assert!(app.modal().is_none(), "the question closed");
+    assert_eq!(app.dog_job_line(), None);
+}
+
+#[test]
+fn d_on_an_uninstalled_entry_or_in_the_list_asks_nothing() {
+    let mut uninstalled = app_with_row(cargo_dog("otel"), DogState::NotInstalled);
+    uninstalled.update(Msg::Key(KeyPress::Confirm));
+    assert_eq!(
+        uninstalled.update(Msg::Key(KeyPress::ArmDelete)),
+        Effect::None
+    );
+    assert!(uninstalled.modal().is_none());
+
+    let mut list = app_with_row(cargo_dog("otel"), DogState::Installed);
+    assert_eq!(list.update(Msg::Key(KeyPress::ArmDelete)), Effect::None);
+    assert!(list.modal().is_none(), "the list has no delete");
+}
+
+#[test]
+fn a_built_in_dogs_entry_has_no_delete_action() {
+    let mut app = app_with_row(cargo_dog("metrics"), DogState::Enabled);
+    app.update(Msg::Key(KeyPress::Confirm));
+
+    assert_eq!(app.update(Msg::Key(KeyPress::ArmDelete)), Effect::None);
+    assert!(app.modal().is_none(), "no question for a built-in dog");
+}
+
+#[test]
+fn a_closed_gate_refuses_the_upgrade_and_the_delete() {
+    let mut app = app_with_version(
+        cargo_dog("otel"),
+        "0.2.1 \u{2192} 0.2.4",
+        DogState::Installed,
+    );
+    app.set_control_for_tests(Control::ReadOnly);
+    app.update(Msg::Key(KeyPress::Confirm));
+
+    assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+    assert_eq!(app.update(Msg::Key(KeyPress::ArmDelete)), Effect::None);
+    assert!(app.modal().is_none());
+    assert_eq!(app.dog_job_line(), None);
+}
+
+#[test]
+fn a_delete_asked_while_a_job_runs_waits_for_it() {
+    let mut app = installed_entry();
+    assert!(matches!(
+        app.start_install("rotate"),
+        Effect::StartDogJob { .. }
+    ));
+    app.update(Msg::Key(KeyPress::ArmDelete));
+    app.note_modal_reach(Some(0));
+
+    assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+    match app.modal() {
+        Some(Modal::Output { title, text, .. }) => {
+            assert_eq!(title.as_str(), "deleting");
+            assert!(
+                text.as_str().contains("rotate is still installing"),
+                "{text:?}"
+            );
+        }
+        other => panic!("expected the waiting modal, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_landed_upgrade_or_delete_names_what_it_did_and_rereads_the_rows() {
+    for (job, started, said) in [
+        (
+            Job::Upgrade {
+                name: "otel".to_owned(),
+            },
+            "upgrading otel  starting  0s",
+            "upgraded otel",
+        ),
+        (
+            Job::Delete {
+                name: "otel".to_owned(),
+            },
+            "deleting otel  starting  0s",
+            "deleted otel",
+        ),
+    ] {
+        let mut app = installed_entry();
+        let Effect::StartDogJob { .. } = app.start_job(job) else {
+            panic!("the job did not start");
+        };
+        assert_eq!(app.dog_job_line().as_deref(), Some(started));
+
+        let effect = app.update(Msg::DogJobDone {
+            name: "otel".to_owned(),
+            ok: true,
+            output: String::new(),
+        });
+        assert_eq!(effect, Effect::LoadCatalogue { fetch: false }, "{said}");
+        assert_eq!(app.dog_job_line().as_deref(), Some(said));
+
+        app.update(Msg::Catalogue {
+            result: Ok(Box::new(CatalogueRead {
+                rows: vec![CatalogueRow {
+                    dog: cargo_dog("otel"),
+                    version: "0.2.4".to_owned(),
+                    state: DogState::NotInstalled,
+                }],
+                refreshing: false,
+            })),
+        });
+        assert_eq!(
+            app.catalogue_rows().first().map(|row| row.state),
+            Some(DogState::NotInstalled)
+        );
+    }
+}
+
+#[test]
+fn a_failed_upgrade_opens_the_failure_modal_with_its_own_title() {
+    let mut app = installed_entry();
+    app.start_job(Job::Upgrade {
+        name: "otel".to_owned(),
+    });
+
+    app.update(Msg::DogJobDone {
+        name: "otel".to_owned(),
+        ok: false,
+        output: "the new version asks for a permission".to_owned(),
+    });
+    assert!(
+        matches!(app.modal(), Some(Modal::Output { title, .. }) if title.as_str() == "upgrading otel"),
+        "{:?}",
+        app.modal()
+    );
+    assert_eq!(app.dog_job_line(), None);
 }
 
 #[test]
