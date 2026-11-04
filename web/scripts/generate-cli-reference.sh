@@ -77,6 +77,11 @@ VERBS=(
   # The global flags' long text is on no verb's page, so it is here once.
   echo "@@FLAGS@@"
   shep help flags
+  # The other help topics, one marker each, in the table's own order.
+  for t in selectors exit-codes; do
+    echo "@@TOPIC:$t@@"
+    shep help "$t"
+  done
   for v in "${VERBS[@]}"; do
     echo "@@VERB:$v@@"
     # shellcheck disable=SC2086 -- word-splitting is the point: a

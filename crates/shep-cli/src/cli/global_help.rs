@@ -5,8 +5,6 @@
 //! each verb ends in one footer line naming the ones it takes. `shep help
 //! flags` prints each flag's long text once.
 
-use std::ffi::OsString;
-
 /// The global flags, as the command tree declares them.
 fn global_args() -> Vec<clap::Arg> {
     use clap::CommandFactory;
@@ -96,7 +94,7 @@ fn footed(command: clap::Command, flags: &[String], takes_host: bool) -> clap::C
 ///
 /// Rendered from the same arguments the parser holds, shown again where a
 /// verb's help hides them.
-pub(crate) fn flags_topic() -> clap::Command {
+pub(super) fn flags_topic() -> clap::Command {
     global_args().into_iter().fold(
         clap::Command::new("shep")
             .bin_name("shep")
@@ -111,11 +109,6 @@ pub(crate) fn flags_topic() -> clap::Command {
             )
         },
     )
-}
-
-/// Whether `argv` is `shep help flags`.
-pub(crate) fn flags_topic_asked(argv: &[OsString]) -> bool {
-    matches!(argv, [_, help, topic] if help == "help" && topic == "flags")
 }
 
 #[cfg(test)]
@@ -320,16 +313,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn the_flags_topic_is_asked_for_by_help_flags_alone() {
-        let argv = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
-        assert!(flags_topic_asked(&argv(&["shep", "help", "flags"])));
-        assert!(!flags_topic_asked(&argv(&["shep", "help"])));
-        assert!(!flags_topic_asked(&argv(&["shep", "help", "stop"])));
-        assert!(!flags_topic_asked(&argv(&["shep", "flags"])));
-        assert!(!flags_topic_asked(&argv(&["shep", "help", "flags", "x"])));
     }
 
     /// The top level lists the globals under a heading, one line each, and
