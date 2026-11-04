@@ -104,3 +104,50 @@ test("the first chapter has no previous and the last has no next", () => {
   assert.equal(first?.previous, undefined);
   assert.equal(last?.next, undefined);
 });
+
+/** Slugs of one part, in book order. */
+function slugsIn(part: string): string[] {
+  return chapters.filter((c) => c.part === part).map((c) => c.item.slug);
+}
+
+test("the dog pages sit in Day to day, between talking-to-a-sheep and upgrading", () => {
+  const dayToDay = slugsIn("Day to day");
+  const from = dayToDay.indexOf("talking-to-a-sheep");
+  assert.notEqual(from, -1, "talking-to-a-sheep is not in Day to day");
+  assert.deepEqual(dayToDay.slice(from, from + 5), [
+    "talking-to-a-sheep",
+    "dogs",
+    "dog-grants",
+    "community-dogs",
+    "upgrading",
+  ]);
+});
+
+test("writing-a-dog is the last chapter of Machine surfaces", () => {
+  assert.equal(slugsIn("Machine surfaces").at(-1), "writing-a-dog");
+  assert.equal(
+    slugsIn("Machine surfaces").at(-2),
+    "shepherd-channel",
+    "writing-a-dog follows the shepherd channel",
+  );
+});
+
+test("no part is called Dogs", () => {
+  const parts = new Set(chapters.map((c) => c.part));
+  assert.equal(parts.has("Dogs"), false);
+});
+
+test("the book is six parts, in the order the header comment names", () => {
+  assert.deepEqual(
+    [...new Set(chapters.map((c) => c.part))],
+    [
+      "Get it running",
+      "Day to day",
+      "Configuration",
+      "Machine surfaces",
+      "Other places it runs",
+      "Reference",
+    ],
+  );
+  assert.equal(chapters.length, 31);
+});
