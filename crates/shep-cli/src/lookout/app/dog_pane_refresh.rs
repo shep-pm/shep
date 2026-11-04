@@ -25,6 +25,16 @@ impl App {
         }
     }
 
+    /// An action of `dog` ended: pulls its open status tab again, or queues
+    /// the pull while one is out.
+    pub(super) fn pull_after_action_of(&mut self, dog: &str) -> Effect {
+        let now = self.now;
+        let send = self
+            .showing_status_of(dog)
+            .is_some_and(|status| status.pull_after_action(now));
+        self.pull_effect(dog, send)
+    }
+
     /// The tick's turn at a pull held back.
     pub(super) fn send_pending_pull(&mut self, now: Instant) -> Effect {
         let Some(dog) = self.open_dog_name() else {

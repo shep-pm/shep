@@ -2,6 +2,8 @@
 //! snapshot replaces, the bus events that patch it, and everything a lost
 //! link stops.
 
+use shep_client::dogs::DONE_KIND;
+
 use super::*;
 
 impl App {
@@ -62,13 +64,21 @@ impl App {
             // from `Msg::BusLagged`: an operator cannot tell which end of the
             // connection to investigate if the two read the same.
             BusEvent::Dropped { count } => {
+                self.lose_long_actions();
                 self.notice = Some(Notice::info(format!(
                     "the shepherd dropped {count} events; re-reading the flock"
                 )));
                 self.mark_dog_pane_due();
                 Effect::PollNow
             }
-            BusEvent::Dog { dog, kind, .. } => self.on_dog_event(&dog, &kind),
+            BusEvent::Dog { dog, kind, payload } => {
+                if kind == DONE_KIND
+                    && let Some(effect) = self.on_long_action_done(&dog, &payload)
+                {
+                    return effect;
+                }
+                self.on_dog_event(&dog, &kind)
+            }
             // A notice, not an exit: a dashboard that vanished would take the
             // last known state with it.
             BusEvent::DaemonShutdown => {
@@ -83,6 +93,7 @@ impl App {
 
     /// `Msg::BusLagged`'s arm: this client's own receiver dropped frames.
     pub(super) fn on_bus_lagged(&mut self, count: u64) -> Effect {
+        self.lose_long_actions();
         self.notice = Some(Notice::info(format!(
             "lookout fell behind and lost {count} events; re-reading the flock"
         )));
@@ -94,6 +105,7 @@ impl App {
     pub(super) fn on_retrying(&mut self, attempt: u32) -> Effect {
         if !matches!(self.link, Link::Lost { .. }) {
             self.link = Link::Retrying { attempt };
+            self.lose_long_actions();
             self.disarm_on_link_change();
         }
         Effect::None
@@ -113,6 +125,7 @@ impl App {
     /// armed thing on screen is disarmed with it.
     pub(super) fn on_frozen(&mut self, at_local: String, why: String) -> Effect {
         self.link = Link::Lost { at_local, why };
+        self.lose_long_actions();
         self.froze_at = Some(self.now);
         self.frozen_for = Duration::ZERO;
         self.disarm_on_link_change();
@@ -164,6 +177,7 @@ impl App {
         // a dead link: a job runs on this machine and is no staler for the
         // shepherd being gone.
         self.dog_job.tick(now);
+        self.long_actions.tick(now);
         // Against the tick's own `now`, not `self.now`, which stops on
         // a dead link: a settings edit describes a local file that is
         // no staler for the shepherd being gone.

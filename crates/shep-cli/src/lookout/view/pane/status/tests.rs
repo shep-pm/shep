@@ -489,6 +489,7 @@ fn the_last_result_shows_above_the_actions() {
         sent: crate::lookout::app::Sent::DogPaneAction {
             name: "paddock".to_owned(),
             action: "pause".to_owned(),
+            label: "pause the board".to_owned(),
             row: None,
             opening: 1,
         },
