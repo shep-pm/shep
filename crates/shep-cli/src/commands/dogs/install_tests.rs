@@ -142,6 +142,7 @@ fi
             lookup: Lookup::Canned(published),
             assets: RedirectPolicy::loopback("127.0.0.1", &["localhost"]),
             lock_wait: Duration::from_millis(100),
+            progress: None,
         }
     }
 }
@@ -544,6 +545,7 @@ async fn no_cargo_on_path_refuses_naming_cargo_and_rustup() {
         lookup: Lookup::Canned(from_the_row()),
         assets: RedirectPolicy::GITHUB_RELEASES,
         lock_wait: Duration::from_millis(100),
+        progress: None,
     };
 
     let (code, _out, err) = run(

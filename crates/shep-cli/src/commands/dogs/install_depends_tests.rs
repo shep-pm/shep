@@ -82,6 +82,7 @@ impl World {
             lookup: Lookup::Canned(Published::Unreported),
             assets: RedirectPolicy::loopback("127.0.0.1", &["localhost"]),
             lock_wait: Duration::from_millis(100),
+            progress: None,
         }
     }
 
