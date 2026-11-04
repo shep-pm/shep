@@ -35,6 +35,8 @@ export interface CliReferenceData {
   topLevelHelp: string;
   /** `shep help flags`, byte-for-byte: each global flag once, with its long text. */
   globalFlagsHelp: string;
+  /** Each other `shep help <topic>`, byte-for-byte, in the generator's order. */
+  helpTopics: { name: string; text: string }[];
   verbs: CliVerb[];
 }
 
@@ -163,6 +165,9 @@ const TOP_LEVEL_MARKER = "@@TOPLEVEL@@\n";
 // global flags' long text, so this is the one place it is published.
 const FLAGS_MARKER = "\n@@FLAGS@@\n";
 
+// The other `shep help <topic>` pages follow the flags, one marker each.
+const TOPIC_MARKER = /\n@@TOPIC:([a-z-]+)@@\n/;
+
 function parse(source: string): CliReferenceData {
   if (!source.startsWith(TOP_LEVEL_MARKER)) {
     fail("does not open with the @@TOPLEVEL@@ marker — re-run generate-cli-reference.sh.");
@@ -179,7 +184,15 @@ function parse(source: string): CliReferenceData {
     fail("has no @@FLAGS@@ section — re-run generate-cli-reference.sh.");
   }
   const topLevelHelp = topLevelSection.slice(TOP_LEVEL_MARKER.length, flagsAt).trim();
-  const globalFlagsHelp = topLevelSection.slice(flagsAt + FLAGS_MARKER.length).trim();
+  // Splitting on the one-capture pattern gives [flags, name, text, name, ...].
+  const [globalFlagsText, ...topicParts] = topLevelSection
+    .slice(flagsAt + FLAGS_MARKER.length)
+    .split(new RegExp(TOPIC_MARKER, "g"));
+  const globalFlagsHelp = globalFlagsText.trim();
+  const helpTopics: { name: string; text: string }[] = [];
+  for (let i = 0; i < topicParts.length; i += 2) {
+    helpTopics.push({ name: topicParts[i], text: topicParts[i + 1].trim() });
+  }
 
   const verbs: CliVerb[] = [];
   for (let i = 0; i < sections.length; i += 2) {
@@ -194,7 +207,7 @@ function parse(source: string): CliReferenceData {
     verb.aliases = aliasesByVerb.get(verb.name) ?? [];
   }
 
-  return { topLevelHelp, globalFlagsHelp, verbs };
+  return { topLevelHelp, globalFlagsHelp, helpTopics, verbs };
 }
 
 export const cliReference: CliReferenceData = parse(generatedSource);

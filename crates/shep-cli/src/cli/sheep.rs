@@ -220,15 +220,7 @@ pub struct ServeArgs {
 pub struct SelectorArgs {
     /// One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
     ///
-    /// Several are applied in turn, not atomically: `shep stop a b c` where
-    /// `b` matches nothing still stops `a` and `c`, and the exit code is the
-    /// first failure.
-    ///
-    /// A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so
-    /// `api-*` selects `api-auth` and not `my-api-auth`. Quote it: your
-    /// shell expands `api-*` against filenames first, and zsh refuses
-    /// outright when none match. A name with no such character is exact, so
-    /// `web.1` is the sheep called `web.1`.
+    /// See shep help selectors
     #[arg(required = true, num_args = 1..)]
     pub selectors: Vec<String>,
 }

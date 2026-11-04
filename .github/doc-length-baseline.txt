@@ -34,7 +34,6 @@
 41 crates/shep-cli/src/cli/sheep.rs /// Selectors, script paths, Flockfiles, or `-` to read Flockfile JSON
 8 crates/shep-cli/src/cli/sheep.rs /// Interpreter to run the script with, overriding both shep.toml's
 9 crates/shep-cli/src/cli/sheep.rs /// Widen a Flockfile load past its additive default: append nothing,
-10 crates/shep-cli/src/cli/sheep.rs /// One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
 
 14 crates/shep-cli/src/cli/verbs.rs /// Register a sheep without starting it.
 21 crates/shep-cli/src/cli/verbs.rs /// Serve a directory over plain HTTP, as a managed sheep.
