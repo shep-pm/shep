@@ -47,6 +47,15 @@ fn restarted(id: u32, name: &str, restarts: u32) -> ProcessInfo {
 
 /// Caches an index whose rows are `(adopt_as, needs)`.
 pub(super) fn cache_index(paths: &ShepPaths, rows: &[(&str, &[&str])]) {
+    cache_document(paths, rows, None);
+}
+
+/// Caches an index with no dogs whose top-level `shep` is `version`.
+pub(super) fn cache_index_naming_shep(paths: &ShepPaths, version: &str) {
+    cache_document(paths, &[], Some(version));
+}
+
+fn cache_document(paths: &ShepPaths, rows: &[(&str, &[&str])], shep: Option<&str>) {
     let dogs: Vec<_> = rows
         .iter()
         .map(|(adopt_as, needs)| {
@@ -63,7 +72,10 @@ pub(super) fn cache_index(paths: &ShepPaths, rows: &[(&str, &[&str])]) {
             })
         })
         .collect();
-    let document = serde_json::json!({ "version": 1, "dogs": dogs });
+    let mut document = serde_json::json!({ "version": 1, "dogs": dogs });
+    if let Some(shep) = shep {
+        document["shep"] = shep.into();
+    }
     crate::dog_index::write_cache(&paths.dog_index_cache, URL, document.to_string().as_bytes())
         .unwrap();
 }
@@ -93,6 +105,16 @@ pub(super) fn off(paths: &ShepPaths, names: &[&str]) {
         serde_json::json!({ "off": names }).to_string(),
     )
     .unwrap();
+}
+
+/// This CLI's own version.
+fn this_version() -> semver::Version {
+    env!("CARGO_PKG_VERSION").parse().unwrap()
+}
+
+/// A release one major version past this CLI's.
+fn newer_version() -> semver::Version {
+    semver::Version::new(this_version().major + 1, 0, 0)
 }
 
 fn line(shown: Option<Shown>) -> String {
@@ -342,6 +364,85 @@ fn an_off_hint_is_skipped_for_the_next_one() {
 }
 
 #[test]
+fn a_newer_shep_in_the_cached_index_offers_shep_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = paths_in(dir.path());
+    let newer = newer_version();
+    cache_index_naming_shep(&paths, &newer.to_string());
+
+    let shown = next(&paths, URL, &[]).unwrap();
+
+    assert_eq!(shown.hint, Hint::Upgrade);
+    assert_eq!(
+        shown.line,
+        format!(
+            "hint: shep {newer} is out and this is {}. Try: shep upgrade",
+            this_version()
+        )
+    );
+    assert_eq!(shown.offers, []);
+}
+
+#[test]
+fn the_same_or_an_older_shep_in_the_index_shows_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = paths_in(dir.path());
+    let this = this_version();
+    let older = semver::Version::new(this.major, this.minor, this.patch.saturating_sub(1));
+    let prerelease_of_this = format!("{}.{}.{}-rc.1", this.major, this.minor, this.patch);
+
+    for named in [this.to_string(), older.to_string(), prerelease_of_this] {
+        cache_index_naming_shep(&paths, &named);
+        assert_eq!(next(&paths, URL, &[]), None, "{named}");
+    }
+}
+
+#[test]
+fn no_cached_index_means_no_upgrade_hint() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = paths_in(dir.path());
+
+    assert_eq!(next(&paths, URL, &[]), None);
+}
+
+#[test]
+fn an_index_with_no_shep_shows_no_upgrade_hint() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = paths_in(dir.path());
+    cache_index(&paths, &[("log-rotate", &["logs"])]);
+
+    assert_eq!(next(&paths, URL, &[]), None);
+}
+
+#[test]
+fn upgrade_comes_after_logs_and_alerts() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = paths_in(dir.path());
+    cache_index_naming_shep(&paths, &newer_version().to_string());
+    let flock = [
+        with_out(1, "api", log_of(dir.path(), "out.log", 100 * MIB + 1)),
+        restarted(2, "worker", 9),
+    ];
+    assert_eq!(Hint::ALL[2], Hint::Upgrade);
+
+    // The log file has no dog to offer, so alerts is the first that applies.
+    assert_eq!(next(&paths, URL, &flock).unwrap().hint, Hint::Alerts);
+
+    enable(&paths, &["bark"]);
+    assert_eq!(next(&paths, URL, &flock).unwrap().hint, Hint::Upgrade);
+}
+
+#[test]
+fn an_off_upgrade_hint_shows_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = paths_in(dir.path());
+    cache_index_naming_shep(&paths, &newer_version().to_string());
+    off(&paths, &["upgrade"]);
+
+    assert_eq!(next(&paths, URL, &[]), None);
+}
+
+#[test]
 fn the_thresholds_are_a_hundred_mebibytes_and_three_restarts() {
     assert_eq!(LOG_FILE_HINT_BYTES, 104_857_600);
     assert_eq!(RESTART_HINT_COUNT, 3);
@@ -361,9 +462,15 @@ fn the_hint_lines_are_pinned_and_hold_no_dash() {
         log_of(dir.path(), "out.log", 100 * MIB + 1),
     )];
 
+    let upgrade_dir = tempfile::tempdir().unwrap();
+    let upgrade_paths = paths_in(upgrade_dir.path());
+    let newer = newer_version();
+    cache_index_naming_shep(&upgrade_paths, &newer.to_string());
+
     let lines = [
         line(next(&paths, URL, &logs)),
         line(next(&paths, URL, &[restarted(1, "api", 3)])),
+        line(next(&upgrade_paths, URL, &[])),
     ];
 
     assert_eq!(
@@ -371,6 +478,11 @@ fn the_hint_lines_are_pinned_and_hold_no_dash() {
         [
             "hint: api's log is past 100 MiB. Try: shep install log-rotate",
             "hint: api has restarted 3 times. Try: shep enable bark or shep install discord",
+            format!(
+                "hint: shep {newer} is out and this is {}. Try: shep upgrade",
+                this_version()
+            )
+            .as_str(),
         ]
     );
     assert!(lines.iter().all(|l| !l.contains(['\u{2014}', '\u{2013}'])));
@@ -378,7 +490,7 @@ fn the_hint_lines_are_pinned_and_hold_no_dash() {
 
 #[test]
 fn the_hint_names_round_trip() {
-    assert_eq!(Hint::ALL.map(Hint::name), ["logs", "alerts"]);
+    assert_eq!(Hint::ALL.map(Hint::name), ["logs", "alerts", "upgrade"]);
     assert_eq!(Hint::from_name("alerts"), Some(Hint::Alerts));
     assert_eq!(Hint::from_name("Logs"), None);
 }
