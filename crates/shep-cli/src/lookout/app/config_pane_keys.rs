@@ -138,6 +138,7 @@ impl App {
             }
             KeyPress::Action(_)
             | KeyPress::Settings
+            | KeyPress::Catalogue
             | KeyPress::FilterStart
             | KeyPress::TextChar(_)
             | KeyPress::TextBackspace

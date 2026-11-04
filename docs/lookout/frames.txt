@@ -2419,7 +2419,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐j/k  ↓/↑     select a row       b            feed, full screen  any char     types into a box   x            stop             ▌                
                 ▐g/G home/end first / last       h  ?         this keymap        ⌫/del ↵ esc  erase, file, drop  R            restart          ▌                
                 ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
-                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value      i            dog catalogue    ▌                
                 ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
                 ▐←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
@@ -2429,7 +2429,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
                 ▐esc          back one level     y            copy the value     ctrl-r       unmask a secret                                  ▌                
                 ▐                                                                                                                              ▌                
-                ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    ▌                
+                ▐ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                              ▌                
                 ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
                 ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
                 ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
@@ -2471,7 +2471,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
  ▐j/k  ↓/↑     select a row       b            feed, full screen  any char     types into a box   x            stop             ▌ 
  ▐g/G home/end first / last       h  ?         this keymap        ⌫/del ↵ esc  erase, file, drop  R            restart          ▌ 
  ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌ 
- ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌ 
+ ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value      i            dog catalogue    ▌ 
  ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌ 
  ▐←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit       ▟███████▙                    ▌ 
  ▐ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌ 
@@ -2481,7 +2481,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
  ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌ 
  ▐esc          back one level     y            copy the value     ctrl-r       unmask a secret                                  ▌ 
  ▐                                                                                                                              ▌ 
- ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    ▌ 
+ ▐ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                              ▌ 
  ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌ 
  ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌ 
  ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟ 
@@ -2508,7 +2508,7 @@ MOVING                          LOOKING                         CHANGING        
 j/k  ↓/↑     select a row       b            feed, full screen  any char     types into a box   x            stop                
 g/G home/end first / last       h  ?         this keymap        ⌫/del ↵ esc  erase, file, drop  R            restart             
 J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload              
-ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                       
+ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value      i            dog catalogue       
 ←/→          environment tab    o            out / err / both   d            restore default                                     
 ←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit                                       
 ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings                                   
@@ -2518,7 +2518,7 @@ n/N          next / prev match  r            refresh now        c            lea
 ↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                   
 esc          back one level     y            copy the value     ctrl-r       unmask a secret                                     
                                                                                                                                  
- the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                       
+ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                                 
  colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.             
  h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                                
                                                                                                                                  
@@ -2574,6 +2574,7 @@ DOING
 x            stop                                                                                   
 R            restart                                                                                
 L            reload                                                                                 
+i            dog catalogue                                                                          
                                                                                                     
                                                                                                     
                                                                                                     
@@ -2583,8 +2584,7 @@ L            reload
                                                                                                     
                                                                                                     
                                                                                                     
-                                                                                                    
- the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled          
+ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                    
  colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothin…
  h or ?  closes this  ·  q  ctrl-c  quits lookout                                                   
                                                                                                     
@@ -2626,7 +2626,7 @@ CHANGING                        DOING
 any char     types into a box   x            stop                     
 ⌫/del ↵ esc  erase, file, drop  R            restart                  
 e            the config pane    L            reload                   
-space        cycle a value                                            
+space        cycle a value      i            dog catalogue            
 d            restore default                                          
 u            undo the edit                                            
 s            shepherd settings                                        
@@ -2636,7 +2636,7 @@ c            leave it running
 ctrl-w/u/k   cut word, to ends                                        
 ctrl-r       unmask a secret                                          
                                                                       
- the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer …
+ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ cont…
  colour is decoration only: every coloured cell says the same thing i…
  h or ?  closes this  ·  q  ctrl-c  quits lookout                     
                                                                       
@@ -2679,7 +2679,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐j/k  ↓/↑     select a row       b            feed, full screen  any char     types into a box   x            stop             ▌                
                 ▐g/G home/end first / last       h  ?         this keymap        ⌫/del ↵ esc  erase, file, drop  R            restart          ▌                
                 ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
-                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value      i            dog catalogue    ▌                
                 ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
                 ▐←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
@@ -2689,7 +2689,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
                 ▐esc          back one level     y            copy the value     ctrl-r       unmask a secret                                  ▌                
                 ▐                                                                                                                              ▌                
-                ▐ the three above are refused  ·  █ the link is down  ·  nothing acts                                                          ▌                
+                ▐ x R L are refused  ·  █ the link is down  ·  nothing acts                                                                    ▌                
                 ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
                 ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
                 ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
@@ -2731,7 +2731,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐j/k  ↓/↑     select a row       b            feed, full screen  any char     types into a box   x            stop             ▌                
                 ▐g/G home/end first / last       h  ?         this keymap        ⌫/del ↵ esc  erase, file, drop  R            restart          ▌                
                 ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
-                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value      i            dog catalogue    ▌                
                 ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
                 ▐←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
@@ -2741,7 +2741,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
                 ▐esc          back one level     y            copy the value     ctrl-r       unmask a secret                                  ▌                
                 ▐                                                                                                                              ▌                
-                ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ read-only                                          ▌                
+                ▐ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ read-only                                                    ▌                
                 ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
                 ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
                 ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
@@ -2768,7 +2768,7 @@ MOVING                          LOOKING                         CHANGING        
 j/k  ↓/↑     select a row       b            feed, full screen  any char     types into a box   x            stop                                               
 g/G home/end first / last       h  ?         this keymap        ⌫/del ↵ esc  erase, file, drop  R            restart                                            
 J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload                                             
-ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                                                      
+ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value      i            dog catalogue                                      
 ←/→          environment tab    o            out / err / both   d            restore default                                                                    
 ←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit                                                                      
 ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings                                                                  
@@ -2778,5 +2778,5 @@ n/N          next / prev match  r            refresh now        c            lea
 ↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                                                  
 esc          back one level     y            copy the value     ctrl-r       unmask a secret                                                                    
                                                                                                                                                                 
- the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                                                      
+ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                                                                
  h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                                                               
