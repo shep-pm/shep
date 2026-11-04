@@ -108,10 +108,9 @@ impl App {
     /// in the footer and the pane is pulled again, and a refusal or a timeout
     /// is shown and nothing else.
     ///
-    /// An id is kept whether or not the pane is still open, since the result
-    /// event comes either way. Anything else is dropped when the operator has
-    /// left the dog's pane, or has opened it again since the action was sent.
-    /// A pull already out is followed by another when it lands.
+    /// An id is kept with the pane closed, since the result event comes
+    /// either way. Anything else is dropped once the operator has left the
+    /// pane or reopened it. A pull already out is followed by another.
     pub(super) fn on_dog_pane_action_reply(
         &mut self,
         name: &str,
