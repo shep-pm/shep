@@ -128,7 +128,7 @@ export interface ManualSource {
  */
 export type DogSource = CargoSource | CargoGitSource | GoInstallSource | ManualSource;
 
-/** One listing in the community dog index. Every field is required. */
+/** One listing in the community dog index. Every field is required but `needs`. */
 export interface Dog {
   /** The dog's own name, unique (case-insensitively) across the index. Displayed as `package (Name)`. */
   name: string;
@@ -150,6 +150,11 @@ export interface Dog {
   license: string;
   category: DogCategory;
   source: DogSource;
+  /**
+   * The needs this dog meets, by name. shep knows `logs` and `alerts` and
+   * ignores any other, so a row can name a need before shep shows it.
+   */
+  needs?: string[];
 }
 
 /** The top-level required fields, exported so a test can check they match `dogs.schema.json`. */
@@ -287,6 +292,29 @@ function validatePermissions(permissions: unknown, label: string): DogPermission
   });
 }
 
+const NEED_NAME = /^[a-z][a-z0-9-]*$/;
+
+/** A `needs` list of distinct lowercase words, or `undefined` when absent. A word no shep knows yet passes. */
+function validateNeeds(needs: unknown, label: string): string[] | undefined {
+  if (needs === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(needs)) {
+    fail(label, `"needs" must be a list of names`);
+  }
+  const seen = new Set<string>();
+  return needs.map((need, index): string => {
+    if (typeof need !== "string" || !NEED_NAME.test(need)) {
+      fail(label, `"needs"[${index}] must be a lowercase word like "logs"`);
+    }
+    if (seen.has(need)) {
+      fail(label, `"needs" names "${need}" twice`);
+    }
+    seen.add(need);
+    return need;
+  });
+}
+
 function validateSource(source: unknown, label: string): DogSource {
   if (!isRecord(source)) {
     fail(label, `"source" must be an object`);
@@ -392,6 +420,7 @@ export function validate(raw: unknown): Dog[] {
     }
 
     const source = validateSource(entry.source, label);
+    const needs = validateNeeds(entry.needs, label);
 
     const nameKey = anchorOf({ name });
     if (nameKey === "") {
@@ -418,6 +447,7 @@ export function validate(raw: unknown): Dog[] {
       license,
       category,
       source,
+      ...(needs === undefined ? {} : { needs }),
     });
   });
 

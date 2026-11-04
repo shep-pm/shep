@@ -553,7 +553,9 @@ export const BUDGETS: Record<string, number> = {
   // writing a row has to be told the index can list what that version
   // declares, and that a release clears the list. Required content for the
   // page that documents the index, not prose to trim out.
-  "community-dogs": 632,
+  // Raised from 632 on #1482 for `needs`: the two names shep knows and that
+  // any other is ignored. Same reason.
+  "community-dogs": 653,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is
