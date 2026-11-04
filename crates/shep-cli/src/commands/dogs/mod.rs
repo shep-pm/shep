@@ -41,6 +41,7 @@ mod install_ref;
 mod receipt;
 mod remove;
 mod second_look;
+mod shep_upgrade;
 mod upgrade;
 mod vet;
 
@@ -80,6 +81,8 @@ mod remove_install_tests;
 mod second_look_race_tests;
 #[cfg(test)]
 mod second_look_tests;
+#[cfg(test)]
+mod shep_upgrade_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(all(test, unix))]

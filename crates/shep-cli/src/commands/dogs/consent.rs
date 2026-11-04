@@ -405,6 +405,16 @@ impl Input {
         }
     }
 
+    /// The next line of input, `None` at its end or when answers come from a
+    /// callback, which has no line to give.
+    pub(super) fn read_line(&mut self) -> std::io::Result<Option<String>> {
+        let Source::Reading { reader, .. } = &mut self.0 else {
+            return Ok(None);
+        };
+        let mut line = String::new();
+        Ok((reader.read_line(&mut line)? > 0).then_some(line))
+    }
+
     /// Asks `prompt`'s question. A reader is shown it on `streams` first; a
     /// callback is handed the prompt and shows it itself.
     pub(super) fn ask(&mut self, streams: &mut Streams<'_>, prompt: &Prompt) -> Answer {
