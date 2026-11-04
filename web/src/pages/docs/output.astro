@@ -478,9 +478,16 @@ Dogs
     </p>
     <p>
       A hint reads the dog index cache and never fetches it, so with no cache
-      the <code>logs</code> hint has nothing to offer and stays quiet. To turn
-      one off, list its name in <code>$SHEP_HOME/hints.json</code>:{" "}
-      <code>{`{"off": ["logs"]}`}</code>.
+      the <code>logs</code> hint has nothing to offer and stays quiet.
+    </p>
+    <p>
+      <code>shep hints</code> lists the hints with their state and the dogs
+      each offers. <code>shep hints off logs</code> turns one off, and{" "}
+      <code>shep hints on logs</code> turns it back on. With no name either
+      verb takes every hint. The choice is kept in{" "}
+      <code>$SHEP_HOME/hints.json</code>, which only this verb writes.{" "}
+      <code>--format json</code> gives a row per hint with{" "}
+      <code>hint</code>, <code>state</code> and <code>for_it</code>.
     </p>
     <p>
       Only a table on a terminal gets a hint. <code>--format json</code>,{" "}

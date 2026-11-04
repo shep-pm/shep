@@ -213,8 +213,9 @@ fn cells(settings: &Settings, row: SettingsRow) -> Option<Cells> {
             cost: String::new(),
         }),
         // The dog's own header row is not this function's: it answers four
-        // questions in four columns and lives in [`super::dogs`].
-        SettingsRow::Dog(_) => None,
+        // questions in four columns. Nor is the browse row, which has no
+        // column at all. Both live in [`super::dogs`].
+        SettingsRow::Dog(_) | SettingsRow::BrowseDogs => None,
         SettingsRow::DogKey { dog, key } => {
             let dog = settings.dog(dog)?;
             Some(Cells {
@@ -505,5 +506,46 @@ mod tests {
         assert!(row.contains("$SHEP_STYLE"), "got: {row:?}");
         assert!(row.contains("written, but outranked"), "got: {row:?}");
         assert!(!row.contains("the next command reads it"), "got: {row:?}");
+    }
+
+    #[test]
+    fn the_browse_dogs_row_draws_its_label_at_80_columns_and_at_the_narrow_floor() {
+        use crate::lookout::view::MIN_TERM_WIDTH;
+        use crate::output::width::visible_width;
+
+        let app = fixtures::app_in_settings();
+        for width in [80, MIN_TERM_WIDTH] {
+            let rows = rows_at(&app, width);
+            let row = rows
+                .iter()
+                .find(|line| line.contains("browse dogs"))
+                .unwrap_or_else(|| panic!("the row is drawn at {width}: {rows:?}"));
+            assert!(
+                visible_width(row) <= usize::from(width),
+                "{width} columns: {row:?}"
+            );
+        }
+        let rows = rows_at(&app, 80);
+        assert_eq!(
+            rows.last().map(String::as_str).map(str::trim),
+            Some("browse dogs  Enter opens the dog index"),
+            "the last line of the body, hint after the label: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn a_bare_install_draws_the_dogs_section_with_only_the_browse_dogs_row() {
+        let app = fixtures::app_in_settings_without_dogs();
+        let rows = rows_at(&app, 80);
+        let header = rows
+            .iter()
+            .position(|line| line.contains("[dogs]"))
+            .unwrap_or_else(|| panic!("the section header is drawn: {rows:?}"));
+        assert!(rows[header + 2].contains("browse dogs"), "{rows:?}");
+        assert_eq!(
+            rows.len(),
+            header + 3,
+            "nothing else in the section: {rows:?}"
+        );
     }
 }

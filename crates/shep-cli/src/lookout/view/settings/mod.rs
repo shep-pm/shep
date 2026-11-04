@@ -27,7 +27,7 @@ use super::scroll::Attempt;
 use super::status::key_hint::{editor_hint, editor_label, focused_field};
 use super::status::status_layout::TEXT_ENTRY_HINT;
 
-use dogs::{DOGS_CAPTION, dog_header_line};
+use dogs::{DOGS_CAPTION, browse_dogs_line, dog_header_line};
 use tree::tree_line;
 
 /// The width the rows themselves are laid out in: the terminal minus
@@ -106,6 +106,9 @@ fn cursor_only(
                 palette,
             ));
         }
+        Some(SettingsRow::BrowseDogs) => {
+            lines.push(browse_dogs_line(true, table_width, palette));
+        }
         Some(row) => lines.push(tree_line(settings, *row, true, table_width, palette)),
         None => {}
     }
@@ -147,10 +150,11 @@ fn body_from(
     let mut drawn = 0usize;
     let mut full = false;
     // The tree rows sort first in `Settings::rows`, ahead of every
-    // `SettingsRow::Dog`, and cost one line apiece.
+    // `SettingsRow::Dog` and the `SettingsRow::BrowseDogs` row, and cost one
+    // line apiece.
     let tree_len = rows
         .iter()
-        .take_while(|row| !matches!(row, SettingsRow::Dog(_)))
+        .take_while(|row| !matches!(row, SettingsRow::Dog(_) | SettingsRow::BrowseDogs))
         .count();
 
     for (index, row) in rows.iter().copied().enumerate().take(tree_len) {
@@ -188,14 +192,6 @@ fn body_from(
                 palette.muted(),
             )),
         ];
-        if total_rows == tree_len {
-            // Nothing to gate a header this function would otherwise never
-            // draw: an empty flock still gets to say "[dogs]", same as
-            // `flock::render_table`'s own header for an empty payload.
-            if lines.len() + pending.len() + above <= budget {
-                lines.append(&mut pending);
-            }
-        }
         for (index, row) in rows.iter().copied().enumerate().skip(tree_len) {
             if index < offset {
                 continue;
@@ -209,6 +205,7 @@ fn body_from(
                 SettingsRow::Dog(dog) => {
                     dog_header_line(app, settings, dog, selected, table_width, palette)
                 }
+                SettingsRow::BrowseDogs => browse_dogs_line(selected, table_width, palette),
                 // A dog's own keys, its grants checklist and its config tree
                 // are rows like every other row on this screen, drawn by the
                 // same function at one indent deeper than the key above them.

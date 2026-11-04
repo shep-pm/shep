@@ -578,19 +578,18 @@ mod tests {
         assert!(!narrow.contains("built-in"), "and loses SOURCE: {narrow:?}");
 
         // "The same screen at 14 rows, which is fewer than it has to draw.
-        //  The cursor is on the last dog, so the view has scrolled to reach
-        //  it and `... 12 above` says how much is off the top. The scroll
-        //  is counted in lines rather than in rows."
+        //  The cursor is on the last row, `browse dogs`, so the view has
+        //  scrolled to reach it and `... 13 above` says how much is off the
+        //  top. The scroll is counted in lines rather than in rows."
         let short = render_text(&scene(Scene::SettingsShort).1);
         assert!(
-            short.contains("... 12 above"),
+            short.contains("... 13 above"),
             "the marker names how many rows are off the top: {short:?}"
         );
         assert!(
             short
                 .lines()
-                .any(|line| line.starts_with("> bark")
-                    || line.starts_with('>') && line.contains("bark")),
+                .any(|line| line.starts_with('>') && line.contains("browse dogs")),
             "the cursor's own row is drawn: {short:?}"
         );
         assert!(
