@@ -7,6 +7,7 @@
 //! a doc snippet.
 
 pub mod manifest;
+pub mod pane;
 pub mod validate;
 
 /// The flag a candidate is spawned with when shep asks for its version; the
