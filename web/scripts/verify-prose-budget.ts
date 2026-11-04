@@ -262,7 +262,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again, to 4455, on #1451 for the dogs pane's SOURCE and VERSION
   // columns, which no other page describes in lookout's terms.
-  "lookout-config": 4455,
+  //
+  // Raised again, to 4482, on #1494 for the `browse dogs` row that ends the
+  // dogs section, which no other page describes.
+  "lookout-config": 4482,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line
@@ -365,7 +368,10 @@ export const BUDGETS: Record<string, number> = {
   // prose to trim back out.
   //
   // Raised from 3180 for the sentence naming a dog's two levels (#1429).
-  lookout: 3210,
+  //
+  // Raised again, to 3222, on #1494 for the sentence naming the `browse dogs`
+  // row.
+  lookout: 3222,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has
