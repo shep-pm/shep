@@ -405,6 +405,10 @@ pub(crate) async fn run(
                 ExitCode::Success
             }
         },
+        // Reads and writes `hints.json` and the cached index: no shepherd.
+        Commands::Hints(ref args) => {
+            hints::run(&mut streams, &paths, &crate::dog_index::index_url(), args)
+        }
         Commands::Start(ref args) => {
             load_command(&mut streams, &link, guard, args, Load::Start).await
         }
