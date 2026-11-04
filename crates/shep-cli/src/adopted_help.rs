@@ -255,13 +255,23 @@ pub(crate) fn describe_dog(
     before: &[OsString],
     argv: &[OsString],
 ) -> Option<ExitCode> {
-    if !help_asked(before, argv) {
-        return None;
-    }
+    let mut page = asked_page(name, path, paths, &dog_index::index_url(), before, argv)?;
     // A failed write is a closed stdout, and there is nothing left to say
     // about it: `shep <dog> --help | head` is the ordinary reason.
-    let _ = dog_page(name, path, paths, &dog_index::index_url()).print_long_help();
+    let _ = page.print_long_help();
     Some(ExitCode::Success)
+}
+
+/// The page this invocation asks for, or `None` when it reaches the dog.
+fn asked_page(
+    name: &str,
+    path: &Path,
+    paths: &ShepPaths,
+    index_url: &str,
+    before: &[OsString],
+    argv: &[OsString],
+) -> Option<clap::Command> {
+    help_asked(before, argv).then(|| dog_page(name, path, paths, index_url))
 }
 
 /// Whether this invocation asks shep for a dog's page: `shep <dog> --help`,

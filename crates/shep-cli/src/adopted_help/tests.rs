@@ -874,17 +874,27 @@ fn split_for(tokens: &[&str]) -> (Vec<OsString>, Vec<OsString>) {
 
 #[test]
 fn shep_help_dog_matches_shep_dog_help() {
-    for tokens in [
-        ["shep", "kelpie", "--help"],
-        ["shep", "kelpie", "-h"],
-        ["shep", "help", "kelpie"],
-    ] {
-        let (before, argv) = split_for(&tokens);
-        assert!(help_asked(&before, &argv), "{tokens:?} is shep's page");
-    }
+    let dir = tempfile::tempdir().unwrap();
+    let paths = a_home_with(dir.path(), [("kelpie", KELPIE_BODY)]);
+    let path = dir.path().join("kelpie");
+    let drawn = |tokens: &[&str]| {
+        let (before, argv) = split_for(tokens);
+        asked_page("kelpie", &path, &paths, INDEX, &before, &argv)
+            .unwrap_or_else(|| panic!("{tokens:?} reaches the dog"))
+            .render_long_help()
+            .to_string()
+    };
 
-    let (before, argv) = split_for(&["shep", "--home", "/tmp/help", "help", "kelpie"]);
-    assert!(help_asked(&before, &argv), "a --home is not the help verb");
+    let expected = page(&paths, dir.path(), "kelpie");
+    assert!(expected.starts_with("Run agents on a ticket board"));
+    for tokens in [
+        &["shep", "kelpie", "--help"][..],
+        &["shep", "kelpie", "-h"],
+        &["shep", "help", "kelpie"],
+        &["shep", "--home", "/tmp/help", "help", "kelpie"],
+    ] {
+        assert_eq!(drawn(tokens), expected, "{tokens:?}");
+    }
 }
 
 #[test]
