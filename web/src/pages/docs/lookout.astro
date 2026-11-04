@@ -728,6 +728,38 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
       <a href="/docs/dogs">the CLI's verbs</a>.
     </p>
 
+    <h2 id="a-dogs-status-tab">A dog's status tab</h2>
+    <p>
+      A dog that declares a pane opens its config on a <code>status</code> tab,
+      and the settings form is the second. <code>Tab</code> and{" "}
+      <code>Shift-Tab</code> switch between them, and the strip under the title
+      brackets the open one: <code>[status]  settings</code>. A dog with no pane
+      keeps the settings form alone, with no strip.
+    </p>
+    <p>
+      The dog answers what to show and lookout draws it. A{" "}
+      <code>fields</code> section is its title over label and value pairs. A{" "}
+      <code>table</code> is its title, a header of column names and a row per
+      entry. <code>j</code> and <code>k</code> walk the rows of every table as
+      one list, <code>g</code> and <code>G</code> jump to the first and last, and
+      the row under the cursor carries a <code>▸</code> and reverse video. A
+      section with nothing in it says <code>none</code>.
+    </p>
+    <p>
+      Every value is drawn as the dog wrote it, with control characters
+      removed and a long one cut with <code>…</code>. A table too wide for the
+      terminal drops its right-most columns, and the header ends in{" "}
+      <code>…</code> when it has. One taller than the box scrolls with the
+      cursor. A section of a kind this lookout does not know is skipped, and the
+      foot says how many.
+    </p>
+    <p class="fine">
+      Until the dog answers the tab reads <code>asking &lt;dog&gt;</code>. A dog
+      that does not answer in time, or answers something lookout cannot read,
+      leaves one line saying which, quoting the dog's reply, and the settings
+      tab works as it always did. No actions are drawn yet.
+    </p>
+
     <h2 id="editing-text">Editing text</h2>
     <p>
       Every text box (the filters, the config, environment, list and settings
