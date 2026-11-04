@@ -2,9 +2,11 @@ name: Dog release
 # A dog repository calls this on release. It builds the dog's bare binary for
 # every target shep itself ships for, uploads each to the dog's own release
 # as `<package>-<version>-<target>` (plus `.exe` on Windows, no archive), and
-# opens a pull request on shep-pm/shep that sets the index row's `version` and
-# per-target sha256. A person merging that pull request is the review the
-# index stands for; nothing here approves a version by itself.
+# opens a pull request on shep-pm/shep that sets the index row's `version`,
+# per-target sha256 and `permissions`. The permissions are read off the built
+# Linux binary's own `--shep-manifest` answer, in the read-only job. A person
+# merging that pull request is the review the index stands for; nothing here
+# approves a version by itself.
 #
 # The asset name and the tag are not free: `shep install` builds
 # `<repo>/releases/download/v<version>/<package>-<version>-<target>` from the
@@ -187,7 +189,8 @@ jobs:
     # Read only. This job runs the dog's build scripts, and a build script
     # can prepend to GITHUB_PATH and swap any tool a later step runs, so
     # nothing here holds a token that can write. The `upload` job below does
-    # that, from the built files alone.
+    # that, from the built files alone. It is also the only job that runs the
+    # dog's binary, to read the manifest the index row lists.
     permissions:
       contents: read
     timeout-minutes: 60
@@ -248,12 +251,62 @@ jobs:
             echo "$line"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      # The manifest is read off the built binary, and off one leg only: a dog
+      # declares one manifest for every target, and this is the leg whose
+      # binary the runner can exec. Reading it here, in the job whose token
+      # cannot write, is what keeps the jobs that hold one from running a file
+      # the dog built. A dog that answers nothing, or answers something that is
+      # not a manifest with a permissions list, costs the index row its
+      # permissions and costs the release nothing.
+      - id: manifest
+        name: Read the manifest the built binary prints
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        env:
+          PACKAGE: ${{ inputs.package }}
+          BIN: ${{ needs.resolve.outputs.bin }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          asset="dist/${PACKAGE}-${VERSION}-${TARGET}"
+          reason=''
+          if ! "./$asset" --shep-manifest > candidate.json 2> stderr.txt; then
+            reason="${BIN} did not answer --shep-manifest"
+          elif ! jq -e '.permissions | type == "array"' candidate.json > /dev/null; then
+            reason="${BIN} answered --shep-manifest with something that is not a manifest with a permissions list"
+          fi
+          if [ -z "$reason" ]; then
+            mv candidate.json manifest.json
+            echo 'read=true' >> "$GITHUB_OUTPUT"
+            echo "Read $(jq -r '.permissions | length' manifest.json) permissions from the manifest."
+          else
+            rm -f candidate.json
+            echo "::notice::${reason}. The index row will list no permissions."
+            {
+              echo "No manifest for \`${BIN}\`: ${reason}."
+              echo
+              echo '```'
+              head -c 2000 stderr.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Hand the binary to the upload job
         if: needs.resolve.outputs.dry-run != 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-${{ matrix.target }}
           path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+      # Its own artifact, named beside `dist-*` and not inside it: the `upload`
+      # job downloads `dist-*` and attaches everything it finds, and a manifest
+      # on the release is a file `shep install` could be handed.
+      - name: Hand the manifest to the index job
+        if: needs.resolve.outputs.dry-run != 'true' && steps.manifest.outputs.read == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: manifest-${{ matrix.target }}
+          path: manifest.json
           if-no-files-found: error
           retention-days: 1
 
@@ -326,8 +379,11 @@ jobs:
     needs: [resolve, upload]
     if: needs.resolve.outputs.dry-run != 'true'
     runs-on: ubuntu-latest
+    # `actions: read` for the manifest artifact the Linux leg handed over. This
+    # job runs nothing the dog built: it reads the file the leg kept.
     permissions:
       contents: read
+      actions: read
     timeout-minutes: 10
     env:
       INDEX_TOKEN: ${{ secrets.index-token }}
@@ -358,12 +414,36 @@ jobs:
             (cd assets && sha256sum -- "$name") >> sums.txt
           done
           cat sums.txt
+      # The manifest the Linux leg read, if it read one. `gh run download`
+      # rather than `actions/download-artifact`, which this repository pins by
+      # commit nowhere yet. A leg whose binary answered nothing uploaded no such
+      # artifact, so the file is the test for whether there is a manifest.
+      - id: manifest
+        name: Fetch the manifest the Linux leg handed over
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact='manifest-x86_64-unknown-linux-gnu'
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --dir manifests --pattern "$artifact" || true
+          if test -f "manifests/${artifact}/manifest.json"; then
+            echo "manifest=manifests/${artifact}/manifest.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "No manifest artifact, so the row will list no permissions."
+          fi
       - name: Write the row
         env:
           PACKAGE: ${{ inputs.package }}
           REPOSITORY: ${{ needs.resolve.outputs.repository }}
           VERSION: ${{ needs.resolve.outputs.version }}
-        run: python3 shep/scripts/dog-index-update.py shep/web/public/dogs.json "$PACKAGE" "$VERSION" sums.txt "$REPOSITORY"
+          MANIFEST: ${{ steps.manifest.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          args=(shep/web/public/dogs.json "$PACKAGE" "$VERSION" sums.txt "$REPOSITORY")
+          # The manifest is the sixth argument, and only when a leg read one.
+          if [ -n "$MANIFEST" ]; then args+=("$MANIFEST"); fi
+          python3 shep/scripts/dog-index-update.py "${args[@]}"
       - name: Open the pull request
         env:
           GH_TOKEN: ${{ secrets.index-token }}
@@ -371,6 +451,7 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
           REPOSITORY: ${{ needs.resolve.outputs.repository }}
           TAG: ${{ inputs.tag }}
+          MANIFEST: ${{ steps.manifest.outputs.manifest }}
         run: |
           set -euo pipefail
           cd shep
@@ -413,7 +494,12 @@ jobs:
             echo
             echo "- Release: https://github.com/${REPOSITORY}/releases/tag/${TAG}"
             echo "- Built by: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "- Changes only this row's \`version\` and \`sha256\`"
+            echo "- Changes only this row's \`version\`, \`sha256\` and \`permissions\`"
+            if [ -n "$MANIFEST" ]; then
+              echo "- Permissions read from the built \`x86_64-unknown-linux-gnu\` binary"
+            else
+              echo "- No manifest from the built binaries, so the row lists no permissions"
+            fi
             echo
             echo "Merging this is the review: \`shep install ${PACKAGE}\` will install this version and no other."
           } > body.md

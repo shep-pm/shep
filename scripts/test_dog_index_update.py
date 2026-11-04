@@ -4,18 +4,22 @@ Run them with:
 
     python3 -m unittest discover --start-directory scripts
 
-The script is what `dog-release.yml` runs to turn a release's hashes into the
-`web/public/dogs.json` change a human reviews, so these pin that change: which
-row moves, which keys it gains, and everything the script refuses to write.
-The last class reads the committed index and `web/public/dogs.schema.json`.
+The script is what `dog-release.yml` runs to turn a release's hashes and the
+manifest its Linux binary printed into the `web/public/dogs.json` change a
+human reviews, so these pin that change: which row moves, which keys it gains,
+and everything the script refuses to write. The last two classes read the
+committed index and `web/public/dogs.schema.json`, and the workflow that calls
+this script.
 """
 
 from __future__ import annotations
 
 import contextlib
+import fnmatch
 import importlib.util
 import io
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -23,6 +27,7 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPTS.parent
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "dog-release.yml"
 
 # Hyphenated file name: loaded by location, as test_check_doc_length.py does.
 _spec = importlib.util.spec_from_file_location("dog_index_update", SCRIPTS / "dog-index-update.py")
@@ -59,6 +64,20 @@ def sums(package: str, version: str, files: dict[str, str]) -> str:
     return "".join(f"{digest}  {package}-{version}-{target}\n" for target, digest in files.items())
 
 
+def manifest_text(permissions: list | None = None, **extra: object) -> str:
+    """What a dog answers `--shep-manifest` with, with `permissions` as given.
+
+    The rest of the manifest is the fields a real one carries, so a test that
+    reads one is reading the shape the workflow hands over, not a shape built
+    for it. `permissions=None` leaves the key out, which is what a manifest
+    with nothing declared prints.
+    """
+    body: dict = {"manifest": 2, "name": "example", "version": "0.2.0", "protocol": 7, **extra}
+    if permissions is not None:
+        body["permissions"] = permissions
+    return json.dumps(body)
+
+
 class ApplyTests(unittest.TestCase):
     def apply(
         self,
@@ -67,8 +86,11 @@ class ApplyTests(unittest.TestCase):
         hashes: str,
         package: str = "shep-example",
         repository: str = REPOSITORY,
+        permissions: list | None = None,
     ) -> dict:
-        return json.loads(dog_index_update.apply(text, package, version, hashes, repository))
+        return json.loads(
+            dog_index_update.apply(text, package, version, hashes, repository, permissions)
+        )
 
     def source_of(self, doc: dict, package: str = "shep-example") -> dict:
         return next(r for r in doc["dogs"] if r["package"] == package)["source"]
@@ -95,8 +117,9 @@ class ApplyTests(unittest.TestCase):
         out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", hashes, REPOSITORY)
         self.assertLess(out.index(WINDOWS), out.index(LINUX))  # pc < unknown
 
-    # A list written for 0.1.0 would read as 0.2.0's, and this script is handed
-    # no manifest to restate it from. #1485 hands it one and writes the new list.
+    # A list written for 0.1.0 would read as 0.2.0's. With no manifest the
+    # script has nothing to restate it from, so the list goes out with the
+    # version it described rather than standing as a claim about this one.
     def test_a_permissions_list_from_the_version_being_replaced_is_dropped(self) -> None:
         old = {"kind": "cargo", "version": "0.1.0", "permissions": [{"name": "flock.read", "required": True}]}
         doc = self.apply(index_text(row(source=old)), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}))
@@ -104,6 +127,140 @@ class ApplyTests(unittest.TestCase):
             self.source_of(doc),
             {"kind": "cargo", "version": "0.2.0", "sha256": {LINUX: HASH_A}},
         )
+
+    def test_a_manifests_permissions_are_written_with_only_name_and_required(self) -> None:
+        # `reason` is what the manifest carries for the install prompt. The row
+        # is a listing, and the prompt reads the binary's own manifest.
+        permissions = dog_index_update.manifest_permissions(
+            manifest_text(
+                [
+                    {"name": "flock.read", "required": True, "reason": "Lists the flock."},
+                    {"name": "logs.write", "required": False, "reason": "Appends to a log file."},
+                ]
+            )
+        )
+        doc = self.apply(
+            index_text(row()), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}), permissions=permissions
+        )
+        self.assertEqual(
+            self.source_of(doc),
+            {
+                "kind": "cargo",
+                "version": "0.2.0",
+                "sha256": {LINUX: HASH_A},
+                "permissions": [
+                    {"name": "flock.read", "required": True},
+                    {"name": "logs.write", "required": False},
+                ],
+            },
+        )
+
+    def test_permissions_are_written_in_the_manifests_order(self) -> None:
+        # The manifest's order is the order the install prompt asks them in.
+        permissions = dog_index_update.manifest_permissions(
+            manifest_text(
+                [
+                    {"name": "logs.write", "required": True, "reason": "Appends."},
+                    {"name": "flock.read", "required": True, "reason": "Lists the flock."},
+                ]
+            )
+        )
+        out = dog_index_update.apply(
+            index_text(row()), "shep-example", "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}), REPOSITORY, permissions
+        )
+        self.assertLess(out.index("logs.write"), out.index("flock.read"))
+        self.assertLess(out.index('"sha256"'), out.index('"permissions"'))
+
+    def test_a_manifest_declaring_nothing_writes_an_empty_list(self) -> None:
+        # An empty list says this version declares none. No key at all says the
+        # index lists none, which is a different thing to read.
+        permissions = dog_index_update.manifest_permissions(manifest_text([]))
+        doc = self.apply(
+            index_text(row()), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}), permissions=permissions
+        )
+        self.assertEqual(self.source_of(doc)["permissions"], [])
+
+    def test_a_manifest_replaces_the_permissions_an_older_version_left(self) -> None:
+        old = {
+            "kind": "cargo",
+            "version": "0.1.0",
+            "permissions": [{"name": "flock.read", "required": True}],
+        }
+        permissions = dog_index_update.manifest_permissions(
+            manifest_text([{"name": "events.publish", "required": False, "reason": "Publishes."}])
+        )
+        doc = self.apply(
+            index_text(row(source=old)), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}), permissions=permissions
+        )
+        self.assertEqual(self.source_of(doc)["permissions"], [{"name": "events.publish", "required": False}])
+
+    def test_a_permission_with_a_name_that_is_not_a_non_empty_string_is_refused(self) -> None:
+        for name in ("", 7, None, True, ["flock.read"], {"name": "flock.read"}):
+            with self.subTest(name=name), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "permission"):
+                self.apply(
+                    index_text(row()),
+                    "0.2.0",
+                    sums("shep-example", "0.2.0", {LINUX: HASH_A}),
+                    permissions=[{"name": name, "required": True}],
+                )
+
+    def test_a_permission_with_a_required_that_is_not_a_boolean_is_refused(self) -> None:
+        for required in ("true", 1, None, "yes"):
+            with self.subTest(required=required), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "permission"):
+                self.apply(
+                    index_text(row()),
+                    "0.2.0",
+                    sums("shep-example", "0.2.0", {LINUX: HASH_A}),
+                    permissions=[{"name": "flock.read", "required": required}],
+                )
+
+    def test_a_permission_that_is_not_an_object_is_refused(self) -> None:
+        for item in ("flock.read", None, 7):
+            with self.subTest(item=item), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "permission"):
+                self.apply(
+                    index_text(row()),
+                    "0.2.0",
+                    sums("shep-example", "0.2.0", {LINUX: HASH_A}),
+                    permissions=[item],
+                )
+
+    def test_a_permission_with_no_required_is_refused(self) -> None:
+        # `required` decides whether the dog can run without it, so a row that
+        # leaves it out would be read as whichever way the reader guessed.
+        with self.assertRaisesRegex(dog_index_update.IndexUpdateError, "permission"):
+            self.apply(
+                index_text(row()),
+                "0.2.0",
+                sums("shep-example", "0.2.0", {LINUX: HASH_A}),
+                permissions=[{"name": "flock.read"}],
+            )
+
+    def test_a_manifest_that_is_not_a_json_object_is_refused(self) -> None:
+        for text in ("not a manifest\n", "7", "[]", ""):
+            with self.subTest(text=text), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "manifest"):
+                dog_index_update.manifest_permissions(text)
+
+    def test_a_manifest_with_no_permissions_list_is_refused(self) -> None:
+        for text in (manifest_text(), '{"permissions": "flock.read"}', '{"permissions": {"name": "flock.read"}}'):
+            with self.subTest(text=text), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "permissions"):
+                dog_index_update.manifest_permissions(text)
+
+    def test_a_manifest_of_any_shape_writes_its_permissions_and_nothing_else(self) -> None:
+        # A dog's manifest carries its settings schema, its verbs, its events
+        # and a reason beside every permission. None of those belongs in the
+        # index row, and a manifest from a later shep reads the same way.
+        permissions = dog_index_update.manifest_permissions(
+            manifest_text(
+                [{"name": "flock.read", "required": True, "reason": "Lists the flock."}],
+                settings={"type": "object"},
+                actions=[{"name": "flush"}],
+                something_a_later_shep_added=1,
+            )
+        )
+        doc = self.apply(
+            index_text(row()), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}), permissions=permissions
+        )
+        self.assertEqual(self.source_of(doc)["permissions"], [{"name": "flock.read", "required": True}])
 
     def test_other_rows_and_the_wrapper_are_untouched(self) -> None:
         other = row(package="shep-other")
@@ -224,6 +381,89 @@ class CommandLineTests(unittest.TestCase):
             self.assertIn("not a sha256sum line", err)
             self.assertEqual(index.read_text(), before)
 
+    def test_a_sixth_argument_names_the_manifest_and_its_permissions_are_written(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            index.write_text(index_text(row()))
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+            manifest = Path(tmp) / "manifest.json"
+            manifest.write_text(
+                manifest_text([{"name": "flock.read", "required": True, "reason": "Lists the flock."}])
+            )
+            code, out, _ = self.run_main(
+                str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY, str(manifest)
+            )
+            self.assertEqual(code, 0)
+            self.assertIn("1 hashes and 1 permissions", out)
+            self.assertEqual(
+                json.loads(index.read_text())["dogs"][0]["source"]["permissions"],
+                [{"name": "flock.read", "required": True}],
+            )
+
+    def test_five_arguments_still_work_and_write_no_permissions(self) -> None:
+        # A leg whose binary printed nothing hands the workflow five arguments,
+        # and the row is written as it was before this field existed.
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            index.write_text(index_text(row()))
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+            code, _, err = self.run_main(str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY)
+            self.assertEqual((code, err), (0, ""))
+            self.assertNotIn("permissions", json.loads(index.read_text())["dogs"][0]["source"])
+
+    def test_a_manifest_named_and_absent_is_refused_and_leaves_the_index_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            before = index_text(row())
+            index.write_text(before)
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+            code, _, err = self.run_main(
+                str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY, str(Path(tmp) / "manifest.json")
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("manifest.json", err)
+            self.assertEqual(index.read_text(), before)
+
+    def test_a_manifest_that_is_not_json_is_refused_and_leaves_the_index_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            before = index_text(row())
+            index.write_text(before)
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+            manifest = Path(tmp) / "manifest.json"
+            manifest.write_text("shep-example: not a manifest\n")
+            code, _, err = self.run_main(
+                str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY, str(manifest)
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("manifest", err)
+            self.assertEqual(index.read_text(), before)
+
+    def test_a_permission_that_is_not_valid_is_refused_and_leaves_the_index_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            before = index_text(row())
+            index.write_text(before)
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+            manifest = Path(tmp) / "manifest.json"
+            manifest.write_text(manifest_text([{"name": "flock.read", "required": "yes"}]))
+            code, _, err = self.run_main(
+                str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY, str(manifest)
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("permission", err)
+            self.assertEqual(index.read_text(), before)
+
+    def test_a_seventh_argument_is_refused_as_a_usage_error(self) -> None:
+        code, _, err = self.run_main("a", "b", "c", "d", "e", "f", "g")
+        self.assertEqual(code, 1)
+        self.assertIn("usage: dog-index-update.py", err)
+
 
 class CommittedIndexTests(unittest.TestCase):
     """What the workflow edits is the file in this repository."""
@@ -234,6 +474,26 @@ class CommittedIndexTests(unittest.TestCase):
         text = (REPO_ROOT / "web/public/dogs.json").read_text()
         self.assertEqual(json.dumps(json.loads(text), indent=2, ensure_ascii=False) + "\n", text)
 
+    def test_every_permissions_list_in_the_committed_index_validates_against_the_schema(self) -> None:
+        # The checks are read off the schema rather than restated here, so this
+        # refuses a row whose permissions drift from what an editor is told. No
+        # row lists any yet, so the first release that writes a manifest is
+        # what this test starts reading.
+        schema = json.loads((REPO_ROOT / "web/public/dogs.schema.json").read_text())
+        cargo = schema["properties"]["dogs"]["items"]["properties"]["source"]["oneOf"][0]
+        items = cargo["properties"]["permissions"]["items"]
+        self.assertEqual(items["properties"]["name"]["type"], "string")
+        self.assertEqual(items["properties"]["name"]["minLength"], 1)
+        self.assertEqual(items["properties"]["required"]["type"], "boolean")
+        self.assertEqual(sorted(items["required"]), ["name", "required"])
+        self.assertFalse(items["additionalProperties"])
+        index = json.loads((REPO_ROOT / "web/public/dogs.json").read_text())
+        for dog in index["dogs"]:
+            permissions = dog["source"].get("permissions")
+            if permissions is None:
+                continue
+            self.assertEqual(dog_index_update.validate_permissions(permissions, dog["package"]), permissions)
+
     def test_the_schema_declares_the_cargo_fields_the_script_writes(self) -> None:
         schema = json.loads((REPO_ROOT / "web/public/dogs.schema.json").read_text())
         cargo = schema["properties"]["dogs"]["items"]["properties"]["source"]["oneOf"][0]
@@ -243,6 +503,62 @@ class CommittedIndexTests(unittest.TestCase):
         self.assertEqual(sorted(permission["properties"]), ["name", "required"])
         self.assertEqual(permission["required"], ["name", "required"])
         self.assertFalse(permission["additionalProperties"])
+
+
+class WorkflowTests(unittest.TestCase):
+    """What `.github/workflows/dog-release.yml` does with the manifest.
+
+    `scripts/test_dog_release_targets.py` pins the build matrix. These pin what
+    it cannot: the manifest is read by the one job that holds a read-only token,
+    and its artifact stays out of the release, because every file a release
+    serves is a file `shep install` can be handed.
+    """
+
+    def job(self, name: str) -> str:
+        """One job's text, from its key to the next key at the same indent.
+
+        Comments are gone: a step that says it reads the manifest is not a step
+        that reads it.
+        """
+        lines = WORKFLOW.read_text().splitlines()
+        start = next(i for i, line in enumerate(lines) if line == f"  {name}:")
+        following = [i for i in range(start + 1, len(lines)) if re.fullmatch(r"  \w[\w-]*:", lines[i])]
+        body = lines[start : following[0] if following else len(lines)]
+        return "\n".join(re.sub(r"(?<!\S)#.*", "", line) for line in body)
+
+    def test_the_upload_job_downloads_no_artifact_holding_a_manifest(self) -> None:
+        # `dist-*` is the pattern that decides what reaches the release. The
+        # manifest artifact is named beside it, not inside it.
+        upload = self.job("upload")
+        self.assertEqual(re.findall(r"--pattern\s+['\"]([^'\"]+)['\"]", upload), ["dist-*"])
+        artifacts = re.findall(r"^\s+name: ((?:dist|manifest)-.+?)\s*$", self.job("build"), re.M)
+        self.assertEqual(sorted(artifacts), ["dist-${{ matrix.target }}", "manifest-${{ matrix.target }}"])
+        for name in artifacts:
+            if name.startswith("manifest-"):
+                for pattern in re.findall(r"--pattern\s+['\"]([^'\"]+)['\"]", upload):
+                    self.assertFalse(fnmatch.fnmatch(name, pattern), f"{name} matches {pattern}")
+
+    def test_only_the_read_only_build_job_runs_the_dogs_binary(self) -> None:
+        # The manifest is read by exec'ing the built binary, so it is read in
+        # the job whose token cannot write anything, and nowhere else.
+        self.assertEqual(
+            [name for name in ("resolve", "upload", "index-pr") if "--shep-manifest" in self.job(name)],
+            [],
+        )
+        build = self.job("build")
+        steps = re.split(r"^      - ", build, flags=re.M)[1:]
+        reading = [step for step in steps if "--shep-manifest" in step]
+        self.assertEqual(len(reading), 1, "the manifest is read by one step")
+        self.assertIn("if: matrix.target == 'x86_64-unknown-linux-gnu'", reading[0])
+
+    def test_the_index_job_can_fetch_the_manifest_artifact(self) -> None:
+        # `gh run download` needs `actions: read`, and the manifest is optional:
+        # a leg that printed nothing leaves the job with five arguments.
+        index_pr = self.job("index-pr")
+        self.assertIn("actions: read", index_pr)
+        self.assertIn("gh run download", index_pr)
+        self.assertIn("manifest-x86_64-unknown-linux-gnu", index_pr)
+        self.assertIn("dog-index-update.py", index_pr)
 
 
 if __name__ == "__main__":
