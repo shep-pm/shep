@@ -181,10 +181,9 @@ pub(super) fn available_dog_line(
         .unwrap_or(0);
     let state = DogState::NotInstalled.as_str();
     let tail = format!("{state}  {}", row.dog.category);
-    let name_width = longest
-        .min(width.saturating_sub(chars(&tail) + 2))
-        .max(DOG_NAME_MIN)
-        .min(width);
+    // What is left after the mark, the two gaps and the tail: the name pays
+    // for a narrow terminal, and the state and category are never cut for it.
+    let name_width = longest.min(width.saturating_sub(2 + 2 + chars(&tail)));
     let body = format!("{}  {tail}", fit(&row.dog.name, name_width));
     // `mark` spends two columns of the width, so the rest is fitted to what
     // is left.
@@ -523,6 +522,42 @@ mod tests {
         let painted = line.spans.last().expect("the row has a body");
         assert_eq!(painted.style, palette.muted());
         assert_ne!(palette.muted(), ratatui::style::Style::default());
+    }
+
+    /// The name gives way before the state and the category do, in every
+    /// category the index can carry.
+    #[test]
+    fn a_greyed_row_keeps_its_state_and_category_at_the_narrow_floor() {
+        use crate::dog_index::CATEGORIES;
+        use crate::lookout::app::{CatalogueRead, DogState, Msg};
+        use crate::lookout::view::MIN_TERM_WIDTH;
+        let mut app = fixtures::app_in_settings_with_an_index();
+        let rows = CATEGORIES
+            .iter()
+            .map(|category| {
+                fixtures::catalogue_row("a-much-longer-dog-name", category, DogState::NotInstalled)
+            })
+            .collect();
+        app.update(Msg::Catalogue {
+            result: Ok(Box::new(CatalogueRead {
+                rows,
+                refreshing: false,
+            })),
+        });
+        for (index, category) in CATEGORIES.iter().enumerate() {
+            let line = text_of(&available_row(
+                &app,
+                index,
+                MIN_TERM_WIDTH,
+                fixtures::plain(),
+            ));
+            assert!(line.contains("not installed"), "{line:?}");
+            assert!(line.contains(category), "{category}: {line:?}");
+            assert!(
+                visible_width(&line) <= usize::from(MIN_TERM_WIDTH),
+                "{line:?}"
+            );
+        }
     }
 
     #[test]

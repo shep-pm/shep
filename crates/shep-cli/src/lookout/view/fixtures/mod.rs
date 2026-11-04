@@ -71,8 +71,9 @@ pub use self::settings::{
     app_in_settings_with_a_dog_open, app_in_settings_with_an_index, app_in_settings_with_control,
     app_in_settings_with_dog_drift, app_in_settings_with_shadowed_style,
     app_in_settings_with_silent_dog, app_in_settings_with_silent_style,
-    app_in_settings_without_dogs, home_with, open_adopted_dog_row, open_adopted_dog_row_with,
-    open_dog_row, select_setting, setting_set, setting_unset, settings_over, settings_snapshot,
+    app_in_settings_without_dogs, catalogue_row, home_with, open_adopted_dog_row,
+    open_adopted_dog_row_with, open_dog_row, select_setting, setting_set, setting_unset,
+    settings_over, settings_snapshot,
 };
 pub use self::sheep_pane::{
     app_in_sheep_pane, app_in_sheep_pane_on_a_draining_sheep, app_in_sheep_pane_on_a_stopped_sheep,

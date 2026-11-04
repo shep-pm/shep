@@ -203,6 +203,9 @@ pub(crate) struct CataloguePane {
     pub(crate) entry: Option<String>,
     /// Whether a fetch is out and has not answered.
     pub(crate) refreshing: bool,
+    /// Whether the entry was opened from another screen's row, so `Esc` closes
+    /// the catalogue at once rather than stepping back to the list first.
+    pub(crate) direct: bool,
 }
 
 impl CataloguePane {
@@ -214,6 +217,7 @@ impl CataloguePane {
         };
         self.selected = at;
         self.entry = Some(name.to_owned());
+        self.direct = true;
     }
 }
 
@@ -230,6 +234,7 @@ impl App {
             selected: 0,
             entry: None,
             refreshing: false,
+            direct: false,
         });
         Effect::LoadCatalogue { fetch: true }
     }
@@ -322,7 +327,7 @@ impl App {
         match key {
             KeyPress::Quit => return Effect::Quit,
             KeyPress::Escape => {
-                if pane.entry.take().is_none() {
+                if pane.direct || pane.entry.take().is_none() {
                     self.body = Body::FlockTable;
                 }
             }

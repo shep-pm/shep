@@ -310,8 +310,7 @@ mod tests {
         fixtures::select_setting(&mut app, "available.otel");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(matches!(app.body(), Body::FlockTable));
+        assert!(matches!(app.body(), Body::FlockTable), "one Escape");
     }
 
     /// The way out is the one the `i` key's catalogue has.

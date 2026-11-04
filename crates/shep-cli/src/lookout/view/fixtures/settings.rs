@@ -363,7 +363,7 @@ pub fn app_in_settings_without_dogs() -> App {
 
 /// One row of a cached dog index, as the catalogue builds it: `name` is also
 /// what it is adopted as.
-fn catalogue_row(name: &str, category: &str, state: DogState) -> CatalogueRow {
+pub fn catalogue_row(name: &str, category: &str, state: DogState) -> CatalogueRow {
     let document = serde_json::json!({
         "version": 1,
         "dogs": [{

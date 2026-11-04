@@ -22,6 +22,13 @@ impl App {
             self.notice = Some(Notice::grave(reason.to_string()));
             return Effect::None;
         }
+        // These rows open something rather than set it: nothing to refuse.
+        if matches!(
+            self.settings().and_then(Settings::cursor),
+            Some(SettingsRow::AvailableDog(_) | SettingsRow::BrowseDogs)
+        ) {
+            return Effect::None;
+        }
         if self.authorize_write().is_none() {
             return Effect::None;
         }
@@ -160,6 +167,10 @@ mod tests {
         let mut app = fixtures::app_in_settings_with_an_index();
         fixtures::select_setting(&mut app, "available.otel");
         assert_eq!(app.update(Msg::Key(KeyPress::Cycle)), Effect::None);
+        assert!(
+            app.notice().is_none(),
+            "no read-only refusal for a row that writes nothing"
+        );
         assert_eq!(app.update(Msg::Key(KeyPress::TextChar('x'))), Effect::None);
         let settings = app.settings().expect("the screen stays open");
         assert_eq!(settings.cursor(), Some(SettingsRow::AvailableDog(0)));
