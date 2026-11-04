@@ -44,8 +44,8 @@ use crate::home::{
 use crate::remote::{HostScope, Link, host_scope, refuse_host};
 use crate::version_guard::{VersionGuard, connect_client, flock_command};
 use crate::{
-    adopted_help, cli, commands, completions, dog, exit, lookout, output, status, style, welcome,
-    whistle,
+    adopted_help, cli, commands, completions, dog, exit, hints, lookout, output, status, style,
+    welcome, whistle,
 };
 
 /// Parses, resolves `$SHEP_HOME` for the verbs that need it, and dispatches.
@@ -465,7 +465,20 @@ pub(crate) async fn run(
         }
         // Falls back to the muster roll rather than refusing: looking at the
         // flock must not be a dead end on a machine that just rebooted.
-        Commands::Flock(ref args) => flock_command(&mut streams, &link, guard, args).await,
+        Commands::Flock(ref args) => {
+            let code = flock_command(&mut streams, &link, guard, args).await;
+            if code == ExitCode::Success {
+                hints::print_under_flock(
+                    &mut streams,
+                    &paths,
+                    cli.global.quiet,
+                    args.follow,
+                    std::io::stdout().is_terminal(),
+                )
+                .await;
+            }
+            code
+        }
         // `grant` and `revoke` write `shep.toml` and tell a shepherd only if
         // one is running: tightening a dog must work with none, and never
         // autostarts one. The guard arm is what makes `--available` work with
