@@ -98,9 +98,10 @@ const UNDECLARED: Rank = 3;
 const SKIPPED: Rank = 4;
 
 /// The lines under the body, in the order the operator reads them: why the
-/// newest pull failed while an older pane is still held, how many sections
-/// this lookout could not draw, the actions the manifest lacks, the last
-/// result of an action, and the keys that run the pane's actions.
+/// newest pull failed while an older pane is still held, the events a section
+/// names that the dog does not declare, how many sections this lookout could
+/// not draw, the actions the manifest lacks, the last result of an action,
+/// and the keys that run the pane's actions.
 ///
 /// With room for fewer than all of them, the least important go first.
 fn footer_lines(
@@ -115,6 +116,13 @@ fn footer_lines(
             FAILED,
             format!("could not refresh: {}", sanitise(reason).0),
             palette.attention(),
+        ));
+    }
+    for kind in status.undeclared_kinds() {
+        texts.push((
+            UNDECLARED,
+            format!("{} is not an event this dog declares", sanitise(kind).0),
+            palette.muted(),
         ));
     }
     if let PaneState::Ready(pane) = status.state()

@@ -148,7 +148,7 @@ fn leases() -> Pane {
 const ACTIONS: [&str; 4] = ["revoke", "renew", "pause", "drain"];
 
 fn app_over(pane: &Pane, actions: &[&str]) -> App {
-    fixtures::app_in_pane_dog_declaring(actions, Some(fixtures::pane_reply(pane)))
+    fixtures::app_in_pane_dog_with_actions(actions, Some(fixtures::pane_reply(pane)))
 }
 
 fn press(app: &mut App, letter: char) -> Effect {

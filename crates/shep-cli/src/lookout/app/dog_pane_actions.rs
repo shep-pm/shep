@@ -115,6 +115,7 @@ impl App {
         action: &str,
         result: Result<Response, RequestError>,
     ) -> Effect {
+        let now = self.now;
         let Some(status) = self
             .dog_pane_of(name, opening)
             .and_then(ConfigPane::status_mut)
@@ -133,7 +134,7 @@ impl App {
                     }
                     .as_str(),
                 );
-                if status.pull_after_action() {
+                if status.pull_after_action(now) {
                     Effect::Send(Sent::DogPane {
                         name: name.to_owned(),
                         opening,
