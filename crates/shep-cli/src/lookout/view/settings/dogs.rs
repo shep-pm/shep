@@ -154,12 +154,10 @@ fn running_of(app: &App, name: &str) -> Option<String> {
 }
 
 /// One index dog this machine lacks, [`SettingsRow::AvailableDog`]: its name,
-/// the words `not installed`, and its category, fitted to `width`, a BODY
-/// width.
+/// `not installed` and its category, fitted to `width`, a BODY width.
 ///
-/// Greyed with [`Palette::muted`], and said in words too, so a terminal with
-/// no colour still tells it from an installed dog's row. The name takes what
-/// the two words after it leave, so a narrow terminal cuts the name first.
+/// Muted, and said in words too, so a terminal with no colour still tells it
+/// from an installed dog's row. A narrow terminal cuts the name first.
 ///
 /// [`SettingsRow::AvailableDog`]: super::super::super::app::SettingsRow::AvailableDog
 pub(super) fn available_dog_line(
