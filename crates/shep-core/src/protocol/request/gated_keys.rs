@@ -5,7 +5,8 @@ use serde_json::Value;
 use super::Request;
 use crate::config::AppConfig;
 use crate::protocol::{
-    LISTEN_SINCE, MAX_CPU_CORES_SINCE, MAX_TASKS_SINCE, MEMORY_ENFORCE_SINCE, SANDBOX_DOG_SINCE,
+    LISTEN_SINCE, MAX_CPU_CORES_SINCE, MAX_TASKS_SINCE, MEMORY_ENFORCE_SINCE, PTY_SINCE,
+    SANDBOX_DOG_SINCE,
 };
 
 /// An `AppConfig` key that a shepherd below [`GatedKey::since`] ignores,
@@ -36,7 +37,7 @@ struct Gate {
 ///
 /// The old `sandbox` key is not here: a shepherd refuses it, and a client no
 /// longer serializes it.
-const GATES: [Gate; 5] = [
+const GATES: [Gate; 6] = [
     Gate {
         key: GatedKey {
             key: "dogs.sandbox",
@@ -86,6 +87,16 @@ const GATES: [Gate; 5] = [
         dog: None,
         in_app: |app| app.max_tasks.is_some(),
         sets: |value| !value.is_null(),
+    },
+    Gate {
+        key: GatedKey {
+            key: "pty",
+            since: PTY_SINCE,
+        },
+        field: Some("pty"),
+        dog: None,
+        in_app: |app| app.pty,
+        sets: |value| value == true,
     },
 ];
 
@@ -195,6 +206,17 @@ mod tests {
         since: MAX_TASKS_SINCE,
     };
 
+    const PTY: GatedKey = GatedKey {
+        key: "pty",
+        since: PTY_SINCE,
+    };
+
+    fn on_a_pty() -> AppConfig {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.pty = true;
+        app
+    }
+
     #[test]
     fn a_load_of_a_gated_app_names_its_key() {
         for (app, key) in [
@@ -203,6 +225,7 @@ mod tests {
             (kernel_enforced(), MEMORY_ENFORCE),
             (cpu_capped(), MAX_CPU_CORES),
             (task_capped(), MAX_TASKS),
+            (on_a_pty(), PTY),
         ] {
             for request in [
                 Request::Start {
@@ -228,6 +251,7 @@ mod tests {
             (kernel_enforced(), MEMORY_ENFORCE),
             (cpu_capped(), MAX_CPU_CORES),
             (task_capped(), MAX_TASKS),
+            (on_a_pty(), PTY),
         ] {
             let request = Request::ApplyConfig {
                 apps: vec![declared(app)],
@@ -286,6 +310,25 @@ mod tests {
         };
         assert_eq!(set(json!(256)).gated_key_dropped_at(0), Some(MAX_TASKS));
         assert_eq!(set(json!(null)).gated_key_dropped_at(0), None);
+    }
+
+    #[test]
+    fn setting_pty_names_it_and_clearing_it_does_not() {
+        let set = |value| Request::SetSheepField {
+            name: "web".to_string(),
+            key: "pty".to_string(),
+            value,
+        };
+        assert_eq!(set(json!(true)).gated_key_dropped_at(0), Some(PTY));
+        assert_eq!(set(json!(false)).gated_key_dropped_at(0), None);
+    }
+
+    #[test]
+    fn an_app_without_a_pty_names_no_pty_key() {
+        let request = Request::Start {
+            apps: vec![AppConfig::minimal("web", "./srv")],
+        };
+        assert_eq!(request.gated_key_dropped_at(PTY_SINCE - 1), None);
     }
 
     #[test]
