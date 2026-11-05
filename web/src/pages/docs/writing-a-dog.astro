@@ -217,6 +217,9 @@ jobs:
     with:
       package: shep-log-rotate
       tag: \${{ github.event.release.tag_name }}
+      # Optional: targets this dog can't build, space separated. Any but
+      # x86_64-unknown-linux-gnu, which the row's permissions are read from.
+      # skip-targets: x86_64-pc-windows-msvc
     secrets:
       index-token: \${{ secrets.SHEP_INDEX_TOKEN }}`;
 
