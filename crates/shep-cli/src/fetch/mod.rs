@@ -4,8 +4,8 @@
 //! credentials is refused.
 //!
 //! [`get`] refuses, in this order: a 3xx naming a `Location`; any other
-//! non-2xx; any `Transfer-Encoding`; a bad `Content-Length`; and a body above
-//! the caller's `limit`. The head has its own cap, [`MAX_HEADER_BYTES`].
+//! non-2xx; a `Transfer-Encoding` but a lone `chunked`; a bad `Content-Length`;
+//! and a body above `limit`. The head has its own cap, [`MAX_HEADER_BYTES`].
 //!
 //! The `otel` feature adds `post_json` in the `post` submodule.
 use core::fmt;
@@ -15,6 +15,9 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
 
 use crate::terminal_safe;
+
+/// The body framing a response with no `Content-Length` arrives in.
+mod chunked;
 
 /// The POST half, compiled only for a build with the `otel` feature.
 #[cfg(feature = "otel")]
@@ -117,10 +120,10 @@ pub enum FetchError {
         /// to a terminal.
         location: String,
     },
-    /// The response carried a `Transfer-Encoding` header. This client reads
-    /// exactly `Content-Length` bytes, so a chunked body would be
-    /// misparsed rather than decoded.
-    Chunked,
+    /// The response carried a `Transfer-Encoding` this request cannot
+    /// decode: anything but a lone `chunked` on a GET, and any at all on a
+    /// POST, which reads exactly `Content-Length` bytes.
+    TransferEncoding,
     /// The declared or actual body size exceeded the caller's limit.
     TooLarge {
         /// The limit the caller passed to [`get`].
@@ -152,7 +155,7 @@ impl fmt::Display for FetchError {
             Self::Transport(source) => write!(f, "fetch failed: {source}"),
             Self::Status(code) => write!(f, "fetch answered {code}"),
             Self::Redirect { location } => write!(f, "fetch was redirected to {location}"),
-            Self::Chunked => {
+            Self::TransferEncoding => {
                 write!(
                     f,
                     "fetch response used transfer-encoding, which this client refuses to decode"
@@ -180,7 +183,7 @@ impl core::error::Error for FetchError {
             Self::Url(_)
             | Self::Status(_)
             | Self::Redirect { .. }
-            | Self::Chunked
+            | Self::TransferEncoding
             | Self::TooLarge { .. }
             | Self::HeadersTooLarge { .. }
             | Self::Timeout
@@ -388,8 +391,9 @@ fn build_get_request(target: &Target) -> String {
 }
 
 /// Reads the status line, then headers to the blank line that ends them,
-/// then exactly `Content-Length` bytes of body, refusing in the order the
-/// module doc lists.
+/// then the body: chunked when the response says so, which outranks any
+/// `Content-Length`, and otherwise exactly `Content-Length` bytes. Refuses
+/// in the order the module doc lists.
 async fn read_response<S: AsyncRead + Unpin>(
     stream: S,
     limit: usize,
@@ -405,7 +409,7 @@ async fn read_response<S: AsyncRead + Unpin>(
     let code = parse_status_line(&status_line)?;
 
     let mut location: Option<String> = None;
-    let mut transfer_encoding = false;
+    let mut transfer_encodings: Vec<String> = Vec::new();
     let mut content_length: Option<u64> = None;
     // Set on an unparseable value or a second, disagreeing
     // `Content-Length`; the refusal is deferred to after the loop so it
@@ -440,7 +444,7 @@ async fn read_response<S: AsyncRead + Unpin>(
             // `match`: `content-length` is parsed below, and cleaning it
             // first would repair `1\u{200b}2` into a `12` this would honour.
             "location" => location = Some(terminal_safe::sanitise(value).0),
-            "transfer-encoding" => transfer_encoding = true,
+            "transfer-encoding" => transfer_encodings.push(value.to_owned()),
             "content-length" => match value.parse::<u64>() {
                 Ok(parsed) => match content_length {
                     Some(existing) if existing != parsed => content_length_ok = false,
@@ -462,8 +466,14 @@ async fn read_response<S: AsyncRead + Unpin>(
     if !(200..300).contains(&code) {
         return Err(FetchError::Status(code));
     }
-    if transfer_encoding {
-        return Err(FetchError::Chunked);
+    match transfer_encodings.as_slice() {
+        [] => {}
+        [coding] if coding.eq_ignore_ascii_case("chunked") => {
+            // What the `BufReader` read past the blank line is still in its
+            // buffer, as for the `Content-Length` read below.
+            return chunked::read_body(headers.into_inner(), limit).await;
+        }
+        _ => return Err(FetchError::TransferEncoding),
     }
     if !content_length_ok {
         return Err(FetchError::Transport(std::io::Error::other(

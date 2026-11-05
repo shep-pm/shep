@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use super::*;
 
 mod asset;
+mod chunked;
 mod tls;
 
 /// Serves one canned response on an ephemeral port, then stops.
@@ -106,7 +107,7 @@ async fn no_refusal_hands_a_terminal_a_character_the_host_chose() {
         ),
         (
             b"HTTP/1.1 200 OK\r\nTransfer-Encoding: \x1b[2Jchunked\r\n\r\n0\r\n\r\n",
-            "a chunked refusal whose header value is hostile",
+            "a transfer-encoding refusal whose header value is hostile",
         ),
         (
             b"HTTP/1.1 200 OK\r\nContent-Length: \x1b[2Jnope\r\n\r\n",
@@ -175,17 +176,6 @@ async fn a_content_length_body_is_read_exactly() {
         .await
         .expect("read");
     assert_eq!(body, b"hello");
-}
-
-#[tokio::test]
-async fn a_chunked_response_is_refused_rather_than_misparsed() {
-    let target =
-        serve(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n")
-            .await;
-    assert!(matches!(
-        get(&target, 1 << 20, Duration::from_secs(5)).await,
-        Err(FetchError::Chunked)
-    ));
 }
 
 #[tokio::test]
