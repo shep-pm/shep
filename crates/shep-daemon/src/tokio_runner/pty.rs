@@ -1,0 +1,147 @@
+//! A sheep's pseudo-terminal: the pair a `pty = true` child runs on, and the
+//! master's reader.
+
+use core::pin::Pin;
+use core::task::{Context, Poll, ready};
+
+use std::io;
+use std::os::fd::OwnedFd;
+
+use rustix::fs::{self, Mode, OFlags};
+use rustix::pty::{self, OpenptFlags};
+use rustix::termios::{self, Winsize};
+use tokio::io::unix::AsyncFd;
+use tokio::io::{AsyncRead, ReadBuf};
+
+/// Rows of every sheep's window. Fixed: nothing resizes it yet, and a program
+/// that wraps to the window should wrap once, wide enough for a log line.
+pub(super) const PTY_ROWS: u16 = 50;
+
+/// Columns of every sheep's window.
+pub(super) const PTY_COLS: u16 = 200;
+
+/// Linux opens the master close-on-exec in the one call; elsewhere `open`
+/// sets the flag after.
+#[cfg(target_os = "linux")]
+const OPENPT_CLOEXEC: OpenptFlags = OpenptFlags::CLOEXEC;
+#[cfg(not(target_os = "linux"))]
+const OPENPT_CLOEXEC: OpenptFlags = OpenptFlags::empty();
+
+/// The master end of a sheep's terminal, registered with the reactor.
+pub(super) struct PtyMaster {
+    fd: AsyncFd<OwnedFd>,
+}
+
+/// Opens a pair sized [`PTY_ROWS`] by [`PTY_COLS`]: the master the shepherd
+/// reads, and the slave the child gets for fd 0, 1 and 2.
+///
+/// The slave is opened `O_NOCTTY` so the shepherd does not take it as its own
+/// controlling terminal. Must run inside a tokio runtime.
+///
+/// # Errors
+///
+/// Any of `posix_openpt`, `grantpt`, `unlockpt`, `ptsname`, the slave open,
+/// the window size or the master's registration failed.
+pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
+    let master = pty::openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY | OPENPT_CLOEXEC)?;
+    #[cfg(not(target_os = "linux"))]
+    rustix::io::fcntl_setfd(&master, rustix::io::FdFlags::CLOEXEC)?;
+    pty::grantpt(&master)?;
+    pty::unlockpt(&master)?;
+    let name = pty::ptsname(&master, Vec::new())?;
+    let slave = fs::open(
+        name.as_c_str(),
+        OFlags::RDWR | OFlags::NOCTTY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )?;
+    termios::tcsetwinsize(
+        &slave,
+        Winsize {
+            ws_row: PTY_ROWS,
+            ws_col: PTY_COLS,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        },
+    )?;
+    let flags = fs::fcntl_getfl(&master)?;
+    fs::fcntl_setfl(&master, flags | OFlags::NONBLOCK)?;
+    // Tokio deprecated `new` for `register`, which needs tokio 1.53.3 where
+    // the workspace floor is 1.41. An `OwnedFd` is the open, stable
+    // descriptor `register` asks for, so the unsoundness does not apply.
+    #[allow(deprecated, reason = "register needs a newer tokio floor")]
+    let fd = AsyncFd::new(master)?;
+    Ok((PtyMaster { fd }, slave))
+}
+
+impl PtyMaster {
+    /// The master as an [`AsyncRead`] of what the child wrote.
+    pub(super) fn into_reader(self) -> PtyReader {
+        PtyReader { master: self }
+    }
+}
+
+/// What the child wrote to its terminal, as a byte stream that ends when the
+/// last slave descriptor closes.
+pub(super) struct PtyReader {
+    master: PtyMaster,
+}
+
+impl AsyncRead for PtyReader {
+    /// A master whose slave side has closed fails `read(2)` with `EIO` on
+    /// Linux and returns 0 on macOS: both end the stream, so no caller meets
+    /// an error for a child that merely exited.
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        loop {
+            let mut ready = ready!(this.master.fd.poll_read_ready(cx))?;
+            let read = ready.try_io(|fd| {
+                rustix::io::read(fd.get_ref(), buf.initialize_unfilled()).map_err(io::Error::from)
+            });
+            match read {
+                Ok(Ok(count)) => {
+                    buf.advance(count);
+                    return Poll::Ready(Ok(()));
+                }
+                Ok(Err(error))
+                    if error.raw_os_error() == Some(rustix::io::Errno::IO.raw_os_error()) =>
+                {
+                    return Poll::Ready(Ok(()));
+                }
+                Ok(Err(error)) => return Poll::Ready(Err(error)),
+                Err(_would_block) => {}
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use tokio::io::AsyncReadExt as _;
+    use tokio::time::timeout;
+
+    /// A child that has exited is a slave with no holder. The bytes it wrote
+    /// still arrive, then the stream ends cleanly.
+    #[tokio::test]
+    async fn a_master_whose_child_exited_reads_as_end_of_file() {
+        let (master, slave) = open().unwrap();
+        rustix::io::write(&slave, b"bye\n").unwrap();
+        drop(slave);
+
+        let mut seen = Vec::new();
+        timeout(
+            std::time::Duration::from_secs(5),
+            master.into_reader().read_to_end(&mut seen),
+        )
+        .await
+        .expect("the reader never saw the end of the stream")
+        .expect("end of stream must not be an error");
+
+        assert_eq!(seen, b"bye\r\n");
+    }
+}

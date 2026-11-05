@@ -727,7 +727,10 @@ mod tests {
         )
         .unwrap();
         assert!(spec.pty);
-        assert_eq!(spec.env.get("TERM").map(String::as_str), Some("xterm-256color"));
+        assert_eq!(
+            spec.env.get("TERM").map(String::as_str),
+            Some("xterm-256color")
+        );
     }
 
     #[test]

@@ -45,10 +45,14 @@ const READ_BUFFER: usize = 8 * 1024;
 const FINAL_DRAIN: Duration = Duration::from_millis(100);
 
 #[cfg(unix)]
+mod ansi;
+#[cfg(unix)]
 mod dog_link;
 mod line_reader;
 mod log_file;
 mod preflight;
+#[cfg(unix)]
+mod pty;
 mod pump;
 mod runner;
 #[cfg(windows)]

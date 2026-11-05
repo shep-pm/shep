@@ -86,6 +86,11 @@ notify-debouncer-full.workspace = true
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["fs", "time", "socket"] }
 command-fds.workspace = true
+# A sheep's pseudo-terminal (`tokio_runner/pty.rs`): `pty` opens and unlocks
+# the pair, `termios` sets its window, `fs` opens the slave and makes the
+# master non-blocking. `process` comes with the workspace entry, for the
+# `setsid` and `TIOCSCTTY` pre-exec hook in sys.rs.
+rustix = { workspace = true, features = ["fs", "pty", "termios"] }
 # The handover's mechanism: carrying descriptors, the envelope, the exec and
 # the reaping across it. This crate keeps only what the flock puts in it.
 shep-handover.workspace = true
