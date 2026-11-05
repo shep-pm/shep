@@ -517,6 +517,44 @@ pub enum Request {
         /// The event's body, any JSON, broadcast to subscribers as sent.
         payload: serde_json::Value,
     },
+    /// Attach to one sheep's pty and size it.
+    ///
+    /// Answers [`Response::Attached`]; the sheep's output then arrives as
+    /// `pty.out` events and its end as `pty.end`. A sheep without a pty is
+    /// refused ([`RpcErrorCode::InvalidConfig`]) with its name in the
+    /// message. An older shepherd decodes [`Self::Unrecognized`] and refuses
+    /// by name.
+    Attach {
+        /// The sheep's name, not a selector: one pty at a time.
+        name: String,
+        /// Terminal height in character rows.
+        rows: u16,
+        /// Terminal width in character columns.
+        cols: u16,
+    },
+    /// Write text to one sheep's pty, exactly as given.
+    ///
+    /// Unlike [`Self::SendLine`], no terminator is added. `data` is UTF-8
+    /// text. A sheep without a pty is refused
+    /// ([`RpcErrorCode::InvalidConfig`]) with its name in the message.
+    PtyInput {
+        /// The sheep's name, not a selector.
+        name: String,
+        /// The text to write, control characters included.
+        data: String,
+    },
+    /// Resize one sheep's pty.
+    ///
+    /// A sheep without a pty is refused ([`RpcErrorCode::InvalidConfig`])
+    /// with its name in the message.
+    PtyResize {
+        /// The sheep's name, not a selector.
+        name: String,
+        /// Terminal height in character rows.
+        rows: u16,
+        /// Terminal width in character columns.
+        cols: u16,
+    },
     /// A request kind this build has not been taught.
     ///
     /// `#[serde(other)]`, which serde allows here because `Request` is

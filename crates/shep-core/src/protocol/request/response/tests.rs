@@ -577,6 +577,13 @@ fn reply_wire_snapshots() {
             id: 51,
             result: Ok(Response::Reset(vec![sample_info()])),
         },
+        Reply {
+            id: 52,
+            result: Ok(Response::Attached {
+                id: 3,
+                name: "web".to_string(),
+            }),
+        },
     ];
     insta::assert_json_snapshot!("reply_wire_v19", replies);
 }
@@ -700,4 +707,15 @@ fn sheep_dog_table_debug_prints_no_value() {
         format!("{:?}", Response::SheepDogTable { table: None }),
         "SheepDogTable { table: None }"
     );
+}
+
+#[test]
+fn an_attached_reply_has_its_own_tag() {
+    let reply = Response::Attached {
+        id: 3,
+        name: "web".to_string(),
+    };
+    let wire = r#"{"kind":"attached","data":{"id":3,"name":"web"}}"#;
+    assert_eq!(serde_json::to_string(&reply).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Response>(wire).unwrap(), reply);
 }

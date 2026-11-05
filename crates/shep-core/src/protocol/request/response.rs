@@ -373,6 +373,13 @@ pub enum Response {
         /// can.
         refusal: Option<String>,
     },
+    /// Answer to `Attach`: the sheep whose pty this connection now hears.
+    Attached {
+        /// The sheep's id.
+        id: u32,
+        /// The sheep's name, as the request gave it.
+        name: String,
+    },
     /// Answer to `Subscribe`
     Subscribed,
     /// Answer to `PublishEvent`

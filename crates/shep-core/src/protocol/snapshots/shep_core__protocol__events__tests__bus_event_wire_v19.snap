@@ -329,5 +329,18 @@ expression: events
       "dog": "jobs",
       "sheep": "web"
     }
+  },
+  {
+    "event": "pty_out",
+    "data": {
+      "name": "web",
+      "data": "\u001b[32mok\u001b[0m\r\n"
+    }
+  },
+  {
+    "event": "pty_end",
+    "data": {
+      "name": "web"
+    }
   }
 ]
