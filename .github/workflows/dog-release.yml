@@ -17,6 +17,9 @@ name: Dog release
 # index pull request for the same version, so a run that fails part-way never
 # leaves one holding hashes the release no longer serves.
 #
+# A dog that cannot build for a target names it in `skip-targets`. Its row then
+# hashes the rest, and `shep install` builds from source on the skipped target.
+#
 # Run by hand with `workflow_dispatch` it is a dry run against any public
 # dog repository: it builds every target and prints the hashes, and uploads
 # and opens nothing.
@@ -37,6 +40,10 @@ on:
         default: ""
       repository:
         description: The repository to build, when it is not the calling one
+        type: string
+        default: ""
+      skip-targets:
+        description: Targets this dog cannot build for, space separated
         type: string
         default: ""
       dry-run:
@@ -63,6 +70,9 @@ on:
         required: true
       bin:
         description: The binary to ship, when it is not named after the package
+        default: ""
+      skip-targets:
+        description: Targets this dog cannot build for, space separated
         default: ""
       dry-run:
         description: Must stay on here; a real release is the dog repository's own call
@@ -104,6 +114,7 @@ jobs:
           BIN: ${{ inputs.bin }}
           REPOSITORY: ${{ inputs.repository || github.repository }}
           DRY_RUN: ${{ inputs.dry-run }}
+          SKIP_TARGETS: ${{ inputs.skip-targets }}
           INDEX_TOKEN: ${{ secrets.index-token }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -114,6 +125,10 @@ jobs:
           [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "repository '$REPOSITORY' is not owner/name"
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]] \
             || fail "tag '$TAG' is not v<version>. The index builds its download URL from v<version>, so any other tag cannot be installed from."
+          # The row's permissions are read off this leg's binary.
+          case " $SKIP_TARGETS " in
+            *" x86_64-unknown-linux-gnu "*) fail "skip-targets cannot name x86_64-unknown-linux-gnu: the index row's permissions are read off that binary." ;;
+          esac
           version="${TAG#v}"
           bin="${BIN:-$PACKAGE}"
           dry_run=false
@@ -198,7 +213,19 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A job-level `if` has no `matrix` context, so a skipped leg still starts
+      # and every step below waits on this output.
+      - id: leg
+        env:
+          SKIP_TARGETS: ${{ inputs.skip-targets }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          case " $SKIP_TARGETS " in
+            *" $TARGET "*) echo "::notice::Skipping ${TARGET}: the dog lists it in skip-targets." ;;
+            *) echo 'build=true' >> "$GITHUB_OUTPUT" ;;
+          esac
+      - if: steps.leg.outputs.build == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ needs.resolve.outputs.repository }}
           ref: ${{ needs.resolve.outputs.sha }}
@@ -207,12 +234,14 @@ jobs:
       # checkout, so a dog's rust-toolchain.toml gets it too. Installing it on
       # `stable` alone would leave a pinned toolchain without the standard
       # library for the target.
-      - run: |
+      - if: steps.leg.outputs.build == 'true'
+        run: |
           rustup toolchain install stable --profile minimal
           rustup target add ${{ matrix.target }}
-      - if: matrix.packages != ''
+      - if: steps.leg.outputs.build == 'true' && matrix.packages != ''
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
       - name: Build
+        if: steps.leg.outputs.build == 'true'
         env:
           PACKAGE: ${{ inputs.package }}
           BIN: ${{ needs.resolve.outputs.bin }}
@@ -221,6 +250,7 @@ jobs:
         # lockfile at the tag, not of whatever resolves on the day.
         run: cargo build --release --locked --package "$PACKAGE" --bin "$BIN" --target "$TARGET"
       - name: Stage the bare binary under its release name
+        if: steps.leg.outputs.build == 'true'
         env:
           PACKAGE: ${{ inputs.package }}
           BIN: ${{ needs.resolve.outputs.bin }}
@@ -260,7 +290,7 @@ jobs:
       # release nothing.
       - id: manifest
         name: Read the manifest the built binary prints
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        if: steps.leg.outputs.build == 'true' && matrix.target == 'x86_64-unknown-linux-gnu'
         env:
           PACKAGE: ${{ inputs.package }}
           BIN: ${{ needs.resolve.outputs.bin }}
@@ -311,7 +341,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Hand the binary to the upload job
-        if: needs.resolve.outputs.dry-run != 'true'
+        if: steps.leg.outputs.build == 'true' && needs.resolve.outputs.dry-run != 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-${{ matrix.target }}
@@ -322,7 +352,7 @@ jobs:
       # job downloads `dist-*` and attaches everything it finds, and a manifest
       # on the release is a file `shep install` could be handed.
       - name: Hand the manifest to the index job
-        if: needs.resolve.outputs.dry-run != 'true' && steps.manifest.outputs.read == 'true'
+        if: steps.leg.outputs.build == 'true' && needs.resolve.outputs.dry-run != 'true' && steps.manifest.outputs.read == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: manifest-${{ matrix.target }}

@@ -594,6 +594,13 @@ this side:
   hands the path to the script as a sixth argument. The script copies each
   permission's `name` and `required`, in the manifest's order, and nothing
   else the manifest carries.
+- **A dog can skip a target it cannot build.** `skip-targets` lists them, space
+  separated. The leg still starts, since a job-level `if` has no `matrix`
+  context, but every step after `leg` waits on its output, so nothing builds
+  and nothing uploads. `scripts/dog-index-update.py` writes the targets the
+  release holds, so the row hashes the rest and `shep install` falls back to a
+  source build on the skipped one. `resolve` refuses
+  `x86_64-unknown-linux-gnu`, the leg the permissions come from.
 - **Reading the manifest is bounded.** The probe runs the staged binary under
   `timeout -k 5 60`. A dog that ignores `--shep-manifest` and starts its loop
   never returns, and a probe with no bound would hold `build` to its 60-minute
