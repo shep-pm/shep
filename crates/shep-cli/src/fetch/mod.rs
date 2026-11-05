@@ -4,9 +4,8 @@
 //! credentials is refused.
 //!
 //! [`get`] refuses, in this order: a 3xx naming a `Location`; any other
-//! non-2xx; any `Transfer-Encoding` but a lone `chunked`; a bad
-//! `Content-Length`; and a body above the caller's `limit`. The head has its
-//! own cap, [`MAX_HEADER_BYTES`].
+//! non-2xx; a `Transfer-Encoding` but a lone `chunked`; a bad `Content-Length`;
+//! and a body above `limit`. The head has its own cap, [`MAX_HEADER_BYTES`].
 //!
 //! The `otel` feature adds `post_json` in the `post` submodule.
 use core::fmt;
