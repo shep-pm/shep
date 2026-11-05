@@ -69,7 +69,23 @@
       "license": "MIT OR Apache-2.0",
       "category": "other",
       "source": {
-        "kind": "cargo"
+        "kind": "cargo",
+        "version": "0.1.0",
+        "sha256": {
+          "aarch64-apple-darwin": "84143dce3d26144c177e04be957926e0a854a0130655aa7423ac9585559dc565",
+          "aarch64-unknown-linux-gnu": "9b952363925a389319fa8642e648e6205b86a7ac783a85df92a905cfe236c1a7",
+          "aarch64-unknown-linux-musl": "8cc77f9dccdad8880959cfad6ba62c958cfcbdf615209c03b20d52545cb2c39f",
+          "x86_64-apple-darwin": "acc57125fdd2c955bdbf18d167ca8e6bf9af62a4480051aea7f16d059ddbdf81",
+          "x86_64-pc-windows-msvc": "986e428c2593adfc3b29ef654d3f0400b41dc81f1944ed92d9c4017b21a6b73e",
+          "x86_64-unknown-linux-gnu": "2b8b9499f014063ab37a038d95b930e59e219fa6686ac89d4bcd0464e9a55c38",
+          "x86_64-unknown-linux-musl": "c40127f1d26af9106aadb9ec5bf887593c9592d5b22043bba15ac29536f6ba3b"
+        },
+        "permissions": [
+          {
+            "name": "secrets.write:openbao",
+            "required": true
+          }
+        ]
       }
     },
     {
