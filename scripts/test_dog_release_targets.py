@@ -83,6 +83,15 @@ class TargetsTests(unittest.TestCase):
             "Edit both together.",
         )
 
+    def test_every_build_step_waits_on_the_skip_targets_leg(self) -> None:
+        text = (WORKFLOWS / "dog-release.yml").read_text()
+        build = text[text.index("\n  build:\n") : text.index("\n  upload:\n")]
+        steps = re.split(r"\n      - ", build)[1:]
+        self.assertTrue(steps[0].startswith("id: leg"), steps[0])
+        self.assertGreaterEqual(len(steps), 9)
+        for step in steps[1:]:
+            self.assertIn("steps.leg.outputs.build == 'true'", step)
+
 
 if __name__ == "__main__":
     unittest.main()
