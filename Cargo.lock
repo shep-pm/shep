@@ -2317,6 +2317,7 @@ dependencies = [
  "notify",
  "notify-debouncer-full",
  "proptest",
+ "rustix",
  "serde",
  "serde_json",
  "shep-core",

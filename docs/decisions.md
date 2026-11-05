@@ -21,7 +21,7 @@ go for the full argument. The commit that removed them names itself.
 
 - [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (5)
 - [The CLI surface](#the-cli-surface) (8)
-- [Supervision and lifecycle](#supervision-and-lifecycle) (19)
+- [Supervision and lifecycle](#supervision-and-lifecycle) (20)
 - [The log plane](#the-log-plane) (9)
 - [Reload](#reload) (9)
 - [Custom actions and the shepherd channel](#custom-actions-and-the-shepherd-channel) (10)
@@ -339,6 +339,16 @@ Three words share the name and are unrelated. This verb is `Request::Reset`. `sh
 **Why:** #1016, under #1003. A crash loop's count never falls, so two sheep read 2,382 and 2,378 after 20 days up and only restarting the flock cleared them. `reset` is pm2's spelling and sits in "Run things" beside `restart`, which clap tells apart from `--reset` because a verb and a flag parse separately. A reset that also started a process would be `restart` with a side effect, and it would hide the failure an `errored` row records. Refusing a bare selector keeps a reset from wiping the only record of a crash loop by accident. The metric drop reads as a counter reset to Prometheus `rate()`, which handles it; keeping a second never-reset count would have meant a new series for a number nobody asked for. The cost: `RESTARTS` no longer says how often a sheep crashed since registration, and a script that diffs it across a reset reads a negative step.
 
 `verified crates/shep-core/src/protocol/request/verbs.rs (Request::Reset), crates/shep-cli/src/commands/lifecycle/operational.rs (reset), crates/shep-cli/src/cli/sheep.rs (SelectorArgs), crates/shep-cli/src/remote.rs (host_scope), crates/shep-cli/src/cli/verbs.rs (Reset)`
+
+### A pty sheep runs on a `rustix` pseudo-terminal, Unix only, at a fixed 200 by 50, and its log gets plain lines
+
+A sheep with `pty = true` gets a pseudo-terminal in place of pipes: the slave is its fd 0, 1 and 2 and its controlling terminal, and the shepherd reads the master. The child calls `setsid` and `TIOCSCTTY` before the exec, so it leads its own session and group and `kill_tree` still reaches the lamb. The spawn sets no `process_group`, because `setsid` fails for a group leader. `assemble` adds `TERM=xterm-256color` when the env has no `TERM`. Nothing resizes the window: it is `PTY_COLS` 200 by `PTY_ROWS` 50 for every sheep. The terminal is Unix only and `normalize` refuses `pty` on Windows.
+
+The master's output goes through a filter before the log pump sees it. It removes CSI, OSC and other escape sequences, across read boundaries. It ends a line at a cursor move, an erase or a bare `\r`, turns `\r\n` into `\n`, and decodes UTF-8 lossily. `shep bleats` and the log files carry those lines and no raw bytes are kept. A pty has one stream, so every line is stdout. A reload closes the master, and the sheep gets `SIGHUP`, until a later slice hands the master across.
+
+**Why:** #1561, under #1557. A program that checks `isatty` (a REPL, a CLI that colours or prompts) behaves differently on a pipe, and a sheep that needs a terminal had no way to get one. `rustix` over `nix` or `openpty`: it is already in the tree through `shep-tree`, and it has `openpt`, `grantpt`, `unlockpt`, `ptsname` and `tcsetwinsize` as safe calls, so the only `unsafe` is the pre-exec hook in `sys.rs`. `portable-pty` and `nix::pty` would add a crate or a feature for the same five calls. A fixed window because a log line wants a width and nobody asked for another; a config key is cheap to add later and expensive to remove. Control codes are removed rather than kept because the log is read by people and `grep`, and a raw screen redraw is unreadable in both; the cost is that a full-screen program logs fragments and a colour a reader might want is gone. `AsyncFd::new` is deprecated by tokio 1.53.3 in favour of `register`, which this crate does not use because the workspace floor is 1.41.
+
+`verified crates/shep-daemon/src/tokio_runner/pty.rs (open, attach, PtyReader), crates/shep-daemon/src/tokio_runner/ansi.rs (AnsiLines), crates/shep-daemon/src/sys.rs (take_terminal_on_exec), crates/shep-daemon/src/assemble/spawn_spec.rs (build)`
 
 ## The log plane
 

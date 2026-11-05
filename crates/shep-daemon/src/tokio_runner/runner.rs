@@ -9,13 +9,10 @@
 //! fd-3 socketpair as the shepherd channel and hands it to
 //! [`super::pump::spawn_channel_pumps`].
 
-use std::fs;
-use std::io;
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt as _;
-use std::path::Path;
 use std::process::Stdio;
 #[cfg(unix)]
 use std::sync::Arc;
@@ -51,6 +48,9 @@ use super::dog_link;
 #[cfg(unix)]
 use super::log_file::carried_sink;
 use super::log_file::{LogSink, PipeFds};
+use super::preflight::what_exec_will_find;
+#[cfg(unix)]
+use super::pty::{self, Stdout};
 use super::pump::{spawn_channel_pumps, spawn_log_pump, spawn_stdin_pump};
 #[cfg(windows)]
 use super::windows_pipe;
@@ -400,99 +400,6 @@ fn to_nix_operator_signal(sig: OperatorSignal) -> Signal {
     }
 }
 
-/// What exec will make of `spec.program`, before anything is spawned.
-///
-/// A `/` makes it a path, absolute or relative to `spec.cwd`, whose absence is
-/// [`Preflight::Impossible`] and refuses the caller's whole batch. Without one
-/// it is a bare command resolved through `spec.env`'s own `PATH`, at most
-/// [`Preflight::Doubtful`]: a `shep startup` unit's `PATH` is not the
-/// operator's shell's. Read through [`definitely_absent`], not [`Path::exists`].
-pub(super) fn what_exec_will_find(spec: &SpawnSpec) -> Preflight {
-    if spec.program.is_empty() {
-        return Preflight::Unknown;
-    }
-    let program = Path::new(&spec.program);
-    // A `/` is the claim that this is a path; Windows spells it `\`. Missing
-    // that claim costs only the clear refusal: the fall-through looks the
-    // program up on PATH, misses, and the spawn proceeds anyway.
-    if spec.program.contains('/') || spec.program.contains(std::path::MAIN_SEPARATOR) {
-        let full = if program.is_absolute() {
-            program.to_path_buf()
-        } else {
-            match &spec.cwd {
-                Some(cwd) => cwd.join(program),
-                None => return Preflight::Unknown,
-            }
-        };
-        if !definitely_absent(&full) {
-            return Preflight::Unknown;
-        }
-        return Preflight::Impossible(format!("no such file: {}", full.display()));
-    }
-    let Some(path) = spec.env.get("PATH").filter(|value| !value.is_empty()) else {
-        return Preflight::Unknown;
-    };
-    // Absent only if every entry answers a plain `NotFound`: one unreadable
-    // directory means exec may still find the program there. `split_paths`
-    // rather than a separator of our own, since a Windows entry carries a `:`
-    // of its own and may be quoted.
-    for dir in std::env::split_paths(path).filter(|dir| !dir.as_os_str().is_empty()) {
-        match fs::metadata(dir.join(program)) {
-            Ok(_) => return Preflight::Unknown,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-            Err(_) => return Preflight::Unknown,
-        }
-    }
-    Preflight::Doubtful(format!(
-        "`{}` is not on the shepherd's PATH ({})",
-        spec.program,
-        summarise_path(path)
-    ))
-}
-
-/// How many `PATH` entries a preflight message names before summarising the
-/// rest.
-///
-/// Four: `assemble::environment_inheritance::inherited_env`'s fallback for a
-/// startup unit with no `PATH` is three entries, so the case an operator hits
-/// prints in full with one to spare. What gets cut off is an interactive
-/// shell's `PATH`, which is unreadable in a terminal error.
-const PATH_ENTRIES_IN_MESSAGE: usize = 4;
-
-/// What separates one `PATH` entry from the next.
-///
-/// Display only: the lookup in `what_exec_will_find` goes through
-/// `std::env::split_paths`, which also understands quoting.
-pub(super) const PATH_LIST_SEPARATOR: char = if cfg!(windows) { ';' } else { ':' };
-
-/// `path` as a message should print it: in full when short, and otherwise its
-/// first [`PATH_ENTRIES_IN_MESSAGE`] entries with a count of the rest.
-pub(super) fn summarise_path(path: &str) -> String {
-    let entries: Vec<&str> = path
-        .split(PATH_LIST_SEPARATOR)
-        .filter(|dir| !dir.is_empty())
-        .collect();
-    if entries.len() <= PATH_ENTRIES_IN_MESSAGE {
-        return path.to_string();
-    }
-    format!(
-        "{} and {} more entries",
-        entries[..PATH_ENTRIES_IN_MESSAGE].join(&PATH_LIST_SEPARATOR.to_string()),
-        entries.len() - PATH_ENTRIES_IN_MESSAGE,
-    )
-}
-
-/// Whether the filesystem says, without qualification, that `path` is not
-/// there. `NotFound` and nothing else.
-///
-/// [`Path::exists`] returns `false` on any [`fs::metadata`] error, so a
-/// permission error or an unsettled mount would read as absent and have
-/// `what_exec_will_find` refuse a whole batch over a filesystem that was
-/// unavailable for a moment. Follows symlinks, as exec does.
-fn definitely_absent(path: &Path) -> bool {
-    matches!(fs::metadata(path), Err(err) if err.kind() == io::ErrorKind::NotFound)
-}
-
 impl ProcessRunner for TokioRunner {
     type Proc = TokioProc;
 
@@ -627,17 +534,34 @@ impl ProcessRunner for TokioRunner {
         let mut env = spec.env.clone();
         // `/dev/null` unless the app asked for a pipe: many programs decide
         // they are non-interactive from a closed fd 0. See `AppConfig::stdin`.
-        command.stdin(if spec.stdin {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        });
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
-        // New process group rooted at the child, so `kill_tree`'s
-        // negative-pid `SIGKILL` cannot reach the daemon's own group.
+        // A pty sheep's terminal replaces all three, and its `setsid` roots
+        // the process group `process_group` would.
         #[cfg(unix)]
-        command.process_group(0);
+        let pty_master =
+            if spec.pty {
+                Some(pty::attach(&mut command).map_err(|error| {
+                    RunnerError::SpawnFailed(format!("pseudo-terminal: {error}"))
+                })?)
+            } else {
+                None
+            };
+        #[cfg(unix)]
+        let piped = pty_master.is_none();
+        #[cfg(windows)]
+        let piped = true;
+        if piped {
+            command.stdin(if spec.stdin {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            });
+            command.stdout(Stdio::piped());
+            command.stderr(Stdio::piped());
+            // New process group rooted at the child, so `kill_tree`'s
+            // negative-pid `SIGKILL` cannot reach the daemon's own group.
+            #[cfg(unix)]
+            command.process_group(0);
+        }
 
         // Containment itself happens after `spawn()`: a process joins a job
         // only once it exists. These flags make that assignment meaningful by
@@ -954,8 +878,15 @@ impl ProcessRunner for TokioRunner {
         };
         #[cfg(not(unix))]
         let pipes = PipeFds;
+        #[cfg(unix)]
+        let stdout = match pty_master {
+            Some(master) => Some(Stdout::terminal(master)),
+            None => child.stdout.take().map(Stdout::Pipe),
+        };
+        #[cfg(windows)]
+        let stdout = child.stdout.take();
         spawn_log_pump(
-            child.stdout.take(),
+            stdout,
             child.stderr.take(),
             LogSink::Path(spec.out_file.clone()),
             LogSink::Path(spec.err_file.clone()),
@@ -966,7 +897,7 @@ impl ProcessRunner for TokioRunner {
         );
 
         let (to_stdin_tx, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
-        if spec.stdin {
+        if spec.stdin && !spec.pty {
             spawn_stdin_pump(child.stdin.take(), to_stdin_rx);
         } else {
             // Dropped rather than dangling, so a caller's `is_closed()` says

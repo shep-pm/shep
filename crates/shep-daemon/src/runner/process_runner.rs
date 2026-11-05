@@ -213,6 +213,11 @@ pub struct SpawnSpec {
     /// gives the child `/dev/null` on fd 0, which is what every sheep gets
     /// unless its config sets `stdin = true`.
     pub stdin: bool,
+    /// Run the child on a pseudo-terminal: the slave is its fd 0, 1 and 2 and
+    /// its controlling terminal, and the log gets what it printed as plain
+    /// lines. `false` gives it pipes. Unix only; `normalize` refuses it on
+    /// Windows.
+    pub pty: bool,
     /// Unix uid/gid to drop to before exec (`None` inherits the daemon's own
     /// identity). Resolved once per `Start` by `crate::privilege::resolve`;
     /// see that module for how `user`/`group` config names become this.
@@ -285,6 +290,7 @@ impl fmt::Debug for SpawnSpec {
             .field("args", &format_args!("<{} args>", self.args.len()))
             .field("cwd", &self.cwd)
             .field("env", &format_args!("<{} vars>", self.env.len()))
+            .field("pty", &self.pty)
             .finish_non_exhaustive()
     }
 }
@@ -473,7 +479,7 @@ mod tests {
         assert_eq!(
             format!("{spec:?}"),
             "SpawnSpec { name: \"web\", program: \"./srv\", args: <2 args>, cwd: None, \
-                 env: <2 vars>, .. }"
+                 env: <2 vars>, pty: false, .. }"
         );
     }
 }
