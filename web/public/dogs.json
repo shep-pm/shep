@@ -13,7 +13,26 @@
       "category": "logs",
       "source": {
         "kind": "cargo",
-        "version": "0.2.10"
+        "version": "0.2.11",
+        "sha256": {
+          "aarch64-apple-darwin": "1624861c5eca6b2f9d61bdc0f362b09d7c4187a174fa248d44f306f00752116d",
+          "aarch64-unknown-linux-gnu": "24c8372db5e7a0c9f96c9a4309d19b170c2a585de4e0c9e602ba043ccc187b5f",
+          "aarch64-unknown-linux-musl": "13c6d03053d6b87bf6b98d40d08761e14c99748b7de20ca0aecad090e504134c",
+          "x86_64-apple-darwin": "d8d5b6adebd2e65c084b723d9421dfdcf33d3bb970f21094b163e91a0113f5e2",
+          "x86_64-pc-windows-msvc": "b56d43cfef3afde328aca5ddcfdc8eb22182e63052ae8135266cf74d78010695",
+          "x86_64-unknown-linux-gnu": "8ed38fcb95ff33ea011bff11564174cda7385d8be5ace760936940110947f085",
+          "x86_64-unknown-linux-musl": "c90bd1120394ed7a21fec45e7e6081eb24c63553b58862d468dc53b2db5b8c5a"
+        },
+        "permissions": [
+          {
+            "name": "flock.read",
+            "required": true
+          },
+          {
+            "name": "logs.manage",
+            "required": true
+          }
+        ]
       },
       "needs": [
         "logs"
@@ -42,7 +61,46 @@
       "category": "interactive",
       "source": {
         "kind": "cargo",
-        "version": "0.3.4"
+        "version": "0.3.5",
+        "sha256": {
+          "aarch64-apple-darwin": "d2a3a15abab5096de9d110d95376920b4adf9212d07d4e6b080c2058e21505e9",
+          "aarch64-unknown-linux-gnu": "a1e8ca60c5775638bfc19c3a0aaeee441b3e2d9f350ebc7fb6413941fa9125f8",
+          "aarch64-unknown-linux-musl": "0e31f8eee5e7bda115bb79f98b9a7768356fb5de015e33eadb8a003f4dc1f890",
+          "x86_64-apple-darwin": "6fe3c563347b58730aa99776eb444ee7fe1f49914aaed8ccdede4c89d8b819ba",
+          "x86_64-pc-windows-msvc": "db6b1d0b85e47eb682e7ea6534912b8e3776101b0f2782e186386abed0999668",
+          "x86_64-unknown-linux-gnu": "88b0e7de27de9868a138f1d46842489e5ede3dc9bd64c0c8b273181f3f60ac78",
+          "x86_64-unknown-linux-musl": "ccd1d536702775bcae1651673cb40463dcd18c4ef278123d368f9de1dd93f3c9"
+        },
+        "permissions": [
+          {
+            "name": "flock.read",
+            "required": true
+          },
+          {
+            "name": "events:log.",
+            "required": true
+          },
+          {
+            "name": "events:process.",
+            "required": true
+          },
+          {
+            "name": "flock.control",
+            "required": false
+          },
+          {
+            "name": "flock.edit",
+            "required": false
+          },
+          {
+            "name": "dogs.control",
+            "required": false
+          },
+          {
+            "name": "logs.manage",
+            "required": false
+          }
+        ]
       },
       "needs": [
         "alerts"
@@ -82,7 +140,17 @@
       "category": "other",
       "source": {
         "kind": "cargo",
-        "version": "0.2.2"
+        "version": "0.2.3",
+        "sha256": {
+          "aarch64-apple-darwin": "500c2c5cdf61d9795c31dbf3f4ac143144dea3998aa9b19eee11eed00f2fe681",
+          "aarch64-unknown-linux-gnu": "4eb19ae71ff767a994225733fd97c1e7040b55a2492a94b79c12180a8b1e6911",
+          "aarch64-unknown-linux-musl": "afd5363485b96a106403371e6d0ee706c81fe9bd43288b4430cca005a58450ab",
+          "x86_64-apple-darwin": "08f7c0eaaab9f34db061d623de23c8f3d6457ebf3ec8df11be10960c717d18ab",
+          "x86_64-pc-windows-msvc": "7f5ed5079d78b749f24d6a22405b1ad74860b6d3158982f7dafaaa9b3556a316",
+          "x86_64-unknown-linux-gnu": "ca05ca69d41ac4e76ff144f83d2279cc9afd1ae1a020a2829527c0066cbde44f",
+          "x86_64-unknown-linux-musl": "6437bd4bce75ca311b6f1ed4f84ca287e7632549cdb645a2cb07bde6abc3ee8d"
+        },
+        "permissions": []
       }
     }
   ]
