@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.2] - 2026-11-04
+
+### Added
+
+- Show a pane action that answers with an id as running in the status bar
+
+
 ## [0.24.1] - 2026-11-04
 
 ### Added

@@ -1,7 +1,7 @@
 {
   "$schema": "./dogs.schema.json",
   "version": 1,
-  "shep": "0.24.1",
+  "shep": "0.24.2",
   "dogs": [
     {
       "name": "Bella",
