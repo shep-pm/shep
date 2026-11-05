@@ -147,6 +147,12 @@ pub(super) fn build<E>(
     env.insert("SHEP_INSTANCE".to_string(), instance.to_string());
     env.insert("SHEP_NAME".to_string(), name.clone());
     env.insert("SHEP_ENVIRONMENT".to_string(), environment.to_string());
+    // A terminal program reads `TERM` to pick its escape sequences, and the
+    // child's env is only this map.
+    if config.pty {
+        env.entry("TERM".to_string())
+            .or_insert_with(|| "xterm-256color".to_string());
+    }
 
     let log_stem = if config.merge_logs {
         format!("{}-", name)
@@ -180,6 +186,7 @@ pub(super) fn build<E>(
         log_timestamps: config.log_timestamps,
         channel,
         stdin: config.stdin,
+        pty: config.pty,
         credentials,
         dog_link: false,
         launch_link: None,
@@ -705,6 +712,52 @@ mod tests {
         )
         .unwrap();
         assert!(spec.stdin);
+    }
+
+    #[test]
+    fn the_pty_flag_reaches_the_spawn_spec() {
+        let mut app = AppConfig::minimal("repl", "./repl");
+        app.pty = true;
+        let spec = assemble(
+            &normalize(app).unwrap(),
+            0,
+            &test_paths(),
+            None,
+            &no_secrets(),
+        )
+        .unwrap();
+        assert!(spec.pty);
+        assert_eq!(spec.env.get("TERM").map(String::as_str), Some("xterm-256color"));
+    }
+
+    #[test]
+    fn an_env_term_wins_over_the_default() {
+        let mut app = AppConfig::minimal("repl", "./repl");
+        app.pty = true;
+        app.env.insert("TERM".to_string(), "vt100".to_string());
+        let spec = assemble(
+            &normalize(app).unwrap(),
+            0,
+            &test_paths(),
+            None,
+            &no_secrets(),
+        )
+        .unwrap();
+        assert_eq!(spec.env.get("TERM").map(String::as_str), Some("vt100"));
+    }
+
+    #[test]
+    fn a_sheep_without_a_pty_gets_no_term() {
+        let spec = assemble(
+            &normalize(AppConfig::minimal("web", "./web")).unwrap(),
+            0,
+            &test_paths(),
+            None,
+            &no_secrets(),
+        )
+        .unwrap();
+        assert!(!spec.pty);
+        assert!(!spec.env.contains_key("TERM"));
     }
 
     #[test]
