@@ -617,6 +617,30 @@ fn request_wire_snapshots() {
                 lamb: Some(4312),
             },
         ),
+        envelope(
+            43,
+            Request::Attach {
+                name: "web".to_string(),
+                rows: 24,
+                cols: 80,
+            },
+        ),
+        // `data` is text: a keystroke's control bytes ride as JSON escapes.
+        envelope(
+            44,
+            Request::PtyInput {
+                name: "web".to_string(),
+                data: "ls\r".to_string(),
+            },
+        ),
+        envelope(
+            45,
+            Request::PtyResize {
+                name: "web".to_string(),
+                rows: 50,
+                cols: 132,
+            },
+        ),
     ];
     insta::assert_json_snapshot!("request_wire_v19", requests);
 }
@@ -778,4 +802,74 @@ fn a_publish_event_request_and_its_reply_have_their_own_tags() {
         serde_json::to_string(&Response::EventPublished).unwrap(),
         r#"{"kind":"event_published"}"#
     );
+}
+
+#[test]
+fn the_pty_requests_round_trip_under_their_own_tags() {
+    for (request, wire) in [
+        (
+            Request::Attach {
+                name: "web".to_string(),
+                rows: 24,
+                cols: 80,
+            },
+            r#"{"kind":"attach","name":"web","rows":24,"cols":80}"#,
+        ),
+        (
+            Request::PtyInput {
+                name: "web".to_string(),
+                data: "ls\r\u{e9}".to_string(),
+            },
+            r#"{"kind":"pty_input","name":"web","data":"ls\ré"}"#,
+        ),
+        (
+            Request::PtyResize {
+                name: "web".to_string(),
+                rows: 50,
+                cols: 132,
+            },
+            r#"{"kind":"pty_resize","name":"web","rows":50,"cols":132}"#,
+        ),
+    ] {
+        assert_eq!(serde_json::to_string(&request).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Request>(wire).unwrap(), request);
+    }
+}
+
+/// A shepherd from before the pty verbs has no variant for them. This is its
+/// decoder: a tag it does not know, with `#[serde(other)]`, as `Request` has.
+/// It refuses by name without a protocol bump.
+#[test]
+fn an_older_shepherd_decodes_attach_as_unrecognized() {
+    #[derive(Debug, PartialEq, serde::Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    enum Older {
+        Ping,
+        #[serde(other)]
+        Unrecognized,
+    }
+
+    for request in [
+        Request::Attach {
+            name: "web".to_string(),
+            rows: 24,
+            cols: 80,
+        },
+        Request::PtyInput {
+            name: "web".to_string(),
+            data: "x".to_string(),
+        },
+        Request::PtyResize {
+            name: "web".to_string(),
+            rows: 24,
+            cols: 80,
+        },
+    ] {
+        let wire = serde_json::to_string(&request).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Older>(&wire).unwrap(),
+            Older::Unrecognized,
+            "{wire}"
+        );
+    }
 }

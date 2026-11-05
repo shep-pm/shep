@@ -52,6 +52,7 @@ impl Response {
             Self::DogStarted(_) => "DogStarted",
             Self::DogStaleness { .. } => "DogStaleness",
             Self::HandoverFitness { .. } => "HandoverFitness",
+            Self::Attached { .. } => "Attached",
             Self::Subscribed => "Subscribed",
             Self::EventPublished => "EventPublished",
             Self::ShuttingDown => "ShuttingDown",

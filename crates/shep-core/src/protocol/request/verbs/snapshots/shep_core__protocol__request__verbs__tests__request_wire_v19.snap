@@ -575,5 +575,34 @@ expression: requests
       "signal": "SIGHUP",
       "lamb": 4312
     }
+  },
+  {
+    "id": 43,
+    "deadline_ms": null,
+    "body": {
+      "kind": "attach",
+      "name": "web",
+      "rows": 24,
+      "cols": 80
+    }
+  },
+  {
+    "id": 44,
+    "deadline_ms": null,
+    "body": {
+      "kind": "pty_input",
+      "name": "web",
+      "data": "ls\r"
+    }
+  },
+  {
+    "id": 45,
+    "deadline_ms": null,
+    "body": {
+      "kind": "pty_resize",
+      "name": "web",
+      "rows": 50,
+      "cols": 132
+    }
   }
 ]

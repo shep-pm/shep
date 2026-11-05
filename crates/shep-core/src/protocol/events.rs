@@ -158,6 +158,20 @@ pub enum BusEvent {
         /// The sheep whose table changed.
         sheep: String,
     },
+    /// Output from one sheep's pty, published under `pty.out`.
+    ///
+    /// `data` is UTF-8 text, control sequences included.
+    PtyOut {
+        /// The sheep's name.
+        name: String,
+        /// The output.
+        data: String,
+    },
+    /// One sheep's pty closed, published under `pty.end`.
+    PtyEnd {
+        /// The sheep's name.
+        name: String,
+    },
 }
 
 impl BusEvent {
@@ -202,6 +216,8 @@ impl BusEvent {
             },
             Self::Dropped { .. } => "daemon.dropped",
             Self::DaemonShutdown => "daemon.shutdown",
+            Self::PtyOut { .. } => "pty.out",
+            Self::PtyEnd { .. } => "pty.end",
             // Built rather than named. `config.dog.` is the prefix a
             // subscriber globs on; the dog's own name is the last segment,
             // so `config.dog.bark` reaches one dog and `config.*` reaches
@@ -459,6 +475,13 @@ mod tests {
             dog: "jobs".to_string(),
             sheep: "web".to_string(),
         });
+        events.push(BusEvent::PtyOut {
+            name: "web".to_string(),
+            data: "\u{1b}[32mok\u{1b}[0m\r\n".to_string(),
+        });
+        events.push(BusEvent::PtyEnd {
+            name: "web".to_string(),
+        });
 
         insta::assert_json_snapshot!("bus_event_wire_v19", events);
     }
@@ -700,5 +723,30 @@ mod tests {
             r#"{"event":"dog_sheep_settings_changed","data":{"dog":"jobs","sheep":"web"}}"#
         );
         assert_eq!(serde_json::from_str::<BusEvent>(&json).unwrap(), event);
+    }
+
+    #[test]
+    fn the_pty_events_have_their_topics() {
+        let out = BusEvent::PtyOut {
+            name: "web".to_string(),
+            data: "hi\u{e9}".to_string(),
+        };
+        assert_eq!(out.topic(), "pty.out");
+        assert_eq!(
+            serde_json::to_string(&out).unwrap(),
+            r#"{"event":"pty_out","data":{"name":"web","data":"hié"}}"#
+        );
+        let end = BusEvent::PtyEnd {
+            name: "web".to_string(),
+        };
+        assert_eq!(end.topic(), "pty.end");
+        assert_eq!(
+            serde_json::to_string(&end).unwrap(),
+            r#"{"event":"pty_end","data":{"name":"web"}}"#
+        );
+        for event in [out, end] {
+            let json = serde_json::to_string(&event).unwrap();
+            assert_eq!(serde_json::from_str::<BusEvent>(&json).unwrap(), event);
+        }
     }
 }
