@@ -116,6 +116,7 @@ const FIELDS: &[FieldRow] = &[
     FieldRow { field: "log_timestamps",             group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     FieldRow { field: "channel",                    group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     FieldRow { field: "stdin",                      group: ApplyGroup::NeedsRespawn,  reaches_running: false },
+    FieldRow { field: "pty",                        group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     FieldRow { field: "wait_ready",                 group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     // `shutdown_with_message` belongs here rather than with the kill ladder:
     // `assemble()` ORs it into whether fd 3 is opened, and that is the
@@ -275,6 +276,12 @@ mod tests {
     }
 
     #[test]
+    fn pty_is_baked_into_the_child() {
+        assert_eq!(apply_group("pty"), ApplyGroup::NeedsRespawn);
+        assert!(!reaches_running("pty"));
+    }
+
+    #[test]
     fn depends_on_applies_at_the_next_spawn() {
         // fails if the field is classified Live, which would claim an edit
         // reaches a running flock's order, or Structural, which would route it
@@ -285,12 +292,12 @@ mod tests {
 
     /// fails if the split drifts unnoticed.
     #[test]
-    fn the_split_is_24_5_17_2() {
+    fn the_split_is_24_5_18_2() {
         let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 24, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
-        assert_eq!(count(ApplyGroup::NeedsRespawn), 17, "NeedsRespawn");
+        assert_eq!(count(ApplyGroup::NeedsRespawn), 18, "NeedsRespawn");
         assert_eq!(count(ApplyGroup::Structural), 2, "Structural");
     }
 

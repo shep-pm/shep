@@ -789,6 +789,7 @@ expression: replies
             "dogs": {},
             "channel": false,
             "stdin": false,
+            "pty": false,
             "wait_ready": false,
             "reuse_port": false,
             "listen": {},

@@ -784,6 +784,18 @@
             ]
           }
         },
+        "pty": {
+          "description": "Run this sheep on a pseudo-terminal instead of pipes.\n\nDefaults to `false`. For a program that behaves differently, or refuses\nto run, without a terminal: a shell, a REPL, a curses tool. Not\nsupported on Windows. Set together with `stdin`, this field wins.",
+          "type": "boolean",
+          "default": false,
+          "init": {
+            "blurb": "Runs the process on a pseudo-terminal, for a program that needs a terminal",
+            "group": "inputs",
+            "refuses": [
+              "pty = true on Windows"
+            ]
+          }
+        },
         "readiness_probe": {
           "description": "Readiness probe — gates reload's AwaitReady (spec §7)",
           "anyOf": [

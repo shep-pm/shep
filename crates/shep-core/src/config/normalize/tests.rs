@@ -189,3 +189,30 @@ fn max_tasks_is_accepted_on_linux() {
     normalize(task_capped(1)).expect("the smallest limit on Linux");
     normalize(task_capped(4_194_304)).expect("the largest limit on Linux");
 }
+
+#[test]
+#[cfg(unix)]
+fn pty_is_accepted_on_unix() {
+    // fails if the platform check refuses the platforms that can open a
+    // pseudo-terminal.
+    let mut app = AppConfig::minimal("web", "./srv");
+    app.pty = true;
+    normalize(app).expect("a pty on Unix");
+}
+
+#[test]
+#[cfg(windows)]
+fn pty_is_refused_on_windows_by_name() {
+    // fails if Windows accepts a key nothing there can honour, or refuses it
+    // without saying which key.
+    let mut app = AppConfig::minimal("web", "./srv");
+    app.pty = true;
+    let err = normalize(app).unwrap_err();
+    assert_eq!(
+        err,
+        NormalizeError::PtyUnsupported {
+            name: "web".to_string()
+        }
+    );
+    assert!(err.to_string().contains("pty"), "{err}");
+}

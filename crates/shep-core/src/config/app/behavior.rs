@@ -69,6 +69,7 @@ impl Default for AppConfig {
             dogs: BTreeMap::new(),
             channel: false,
             stdin: false,
+            pty: false,
             wait_ready: false,
             reuse_port: false,
             listen: BTreeMap::new(),

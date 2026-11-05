@@ -480,6 +480,17 @@ pub struct AppConfig {
         "blurb": "Keeps stdin open so shep whisper can write to the process"
     })))]
     pub stdin: bool,
+    /// Run this sheep on a pseudo-terminal instead of pipes.
+    ///
+    /// Defaults to `false`. For a program that behaves differently, or refuses
+    /// to run, without a terminal: a shell, a REPL, a curses tool. Not
+    /// supported on Windows. Set together with `stdin`, this field wins.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "group": "inputs",
+        "blurb": "Runs the process on a pseudo-terminal, for a program that needs a terminal",
+        "refuses": ["pty = true on Windows"]
+    })))]
+    pub pty: bool,
     /// Expect `{"kind":"ready"}` on the shepherd channel
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "readiness",
@@ -609,6 +620,21 @@ mod tests {
         assert!(!app.stdin);
         let parsed: AppConfig = toml::from_str("name = \"web\"\nscript = \"./srv\"").unwrap();
         assert!(!parsed.stdin);
+    }
+
+    #[test]
+    fn pty_is_not_set_unless_the_app_asks() {
+        let app = AppConfig::minimal("web", "./srv");
+        assert!(!app.pty);
+        let parsed: AppConfig = toml::from_str("name = \"web\"\nscript = \"./srv\"").unwrap();
+        assert!(!parsed.pty);
+    }
+
+    #[test]
+    fn the_flockfile_key_is_pty() {
+        let parsed: AppConfig =
+            toml::from_str("name = \"web\"\nscript = \"./srv\"\npty = true").unwrap();
+        assert!(parsed.pty);
     }
 
     #[test]

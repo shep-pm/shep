@@ -144,6 +144,12 @@ pub enum NormalizeError {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
+    /// `pty = true` on Windows, which has no pseudo-terminal this build can
+    /// open. Carries the app name.
+    PtyUnsupported {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
     /// `action_timeout` is above `normalize`'s own ceiling: a wait no
     /// RPC caller could ever be given enough deadline to outlast, since the
     /// daemon clamps every deadline a caller can ask for. Carries the app
@@ -437,6 +443,13 @@ impl fmt::Display for NormalizeError {
                 write!(
                     f,
                     "sheep `{name}` has max_tasks, which needs Linux cgroups; \
+                     remove it on this platform"
+                )
+            }
+            Self::PtyUnsupported { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has pty = true, which is not supported on Windows; \
                      remove it on this platform"
                 )
             }
