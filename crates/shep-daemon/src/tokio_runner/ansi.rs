@@ -321,8 +321,8 @@ mod tests {
     #[tokio::test]
     async fn a_multibyte_character_split_across_two_reads_decodes_whole() {
         assert_eq!(
-            filtered(&[b"caf\xc3", b"\xa9 \xe2\x82", b"\xac\n"]).await,
-            "café €\n"
+            filtered(&[b"na\xc3", b"\xafve \xe2\x82", b"\xac\n"]).await,
+            "naïve €\n"
         );
     }
 

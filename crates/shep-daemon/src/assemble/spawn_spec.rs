@@ -715,6 +715,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_pty_flag_reaches_the_spawn_spec() {
         let mut app = AppConfig::minimal("repl", "./repl");
         app.pty = true;
@@ -734,6 +735,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn an_env_term_wins_over_the_default() {
         let mut app = AppConfig::minimal("repl", "./repl");
         app.pty = true;
