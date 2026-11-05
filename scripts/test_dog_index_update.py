@@ -601,7 +601,10 @@ class WorkflowTests(unittest.TestCase):
             [],
         )
         reading = self.step("build", "--shep-manifest")
-        self.assertIn("if: matrix.target == 'x86_64-unknown-linux-gnu'", reading)
+        self.assertIn(
+            "if: steps.leg.outputs.build == 'true' && matrix.target == 'x86_64-unknown-linux-gnu'",
+            reading,
+        )
 
     def test_the_probe_bounds_a_dog_that_never_exits(self) -> None:
         # A dog that ignores --shep-manifest and starts its loop never returns.
