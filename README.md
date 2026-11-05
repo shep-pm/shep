@@ -194,6 +194,12 @@ A dog is a plugin process the shepherd supervises alongside your flock.
   when a watched git branch moves.
 - [shep-discord](https://github.com/shep-pm/shep-discord) streams a sheep's
   output to Discord and drives the flock from slash commands.
+- [shep-paddock](https://github.com/shep-pm/shep-paddock) leases one host's
+  GPU and RAM to model servers and jobs.
+- [shep-openbao](https://github.com/shep-pm/shep-openbao) mirrors secrets from
+  OpenBao into shep's secrets store.
+- [shep-sandbox](https://github.com/shep-pm/shep-sandbox) runs a sheep inside
+  a crabpot sandbox.
 
 `shep dogs` lists them, `shep adopt` takes one on.
 
