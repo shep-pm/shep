@@ -1077,5 +1077,17 @@ expression: replies
         ]
       }
     }
+  },
+  {
+    "id": 52,
+    "result": {
+      "Ok": {
+        "kind": "attached",
+        "data": {
+          "id": 3,
+          "name": "web"
+        }
+      }
+    }
   }
 ]

@@ -75,6 +75,9 @@ pub fn need<'r>(request: &'r Request, caller: &str) -> Need<'r> {
         | Request::Reload { .. }
         | Request::Signal { .. }
         | Request::SendLine { .. }
+        | Request::Attach { .. }
+        | Request::PtyInput { .. }
+        | Request::PtyResize { .. }
         | Request::Enable { .. }
         | Request::Disable { .. }
         | Request::Muster
@@ -110,5 +113,38 @@ pub fn need<'r>(request: &'r Request, caller: &str) -> Need<'r> {
             dog: |_| P::DogsControl,
         },
         Request::KillDaemon => one(P::ShepherdControl),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_pty_requests_take_flock_control() {
+        for request in [
+            Request::Attach {
+                name: "web".to_string(),
+                rows: 24,
+                cols: 80,
+            },
+            Request::PtyInput {
+                name: "web".to_string(),
+                data: "ls\r".to_string(),
+            },
+            Request::PtyResize {
+                name: "web".to_string(),
+                rows: 24,
+                cols: 80,
+            },
+        ] {
+            assert!(
+                matches!(
+                    need(&request, "kelpie"),
+                    Need::Permission(Permission::FlockControl)
+                ),
+                "{request:?}"
+            );
+        }
     }
 }
