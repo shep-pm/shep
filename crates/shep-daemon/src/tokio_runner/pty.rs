@@ -9,7 +9,7 @@ use std::os::fd::OwnedFd;
 use std::process::Stdio;
 
 use rustix::fs::{self, Mode, OFlags};
-use rustix::pty::{self, OpenptFlags};
+use rustix::pty;
 use rustix::termios::{self, Winsize};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncRead, ReadBuf};
@@ -24,12 +24,27 @@ pub(super) const PTY_ROWS: u16 = 50;
 /// Columns of every sheep's window.
 pub(super) const PTY_COLS: u16 = 200;
 
-/// Linux opens the master close-on-exec in the one call; elsewhere `open`
-/// sets the flag after.
+/// A new master, close-on-exec from the moment it exists. The shepherd forks
+/// other children on other threads, and a flag set afterwards leaves a gap in
+/// which one inherits the master and holds the slave open.
 #[cfg(target_os = "linux")]
-const OPENPT_CLOEXEC: OpenptFlags = OpenptFlags::CLOEXEC;
+fn open_master() -> io::Result<OwnedFd> {
+    use rustix::pty::OpenptFlags;
+    Ok(pty::openpt(
+        OpenptFlags::RDWR | OpenptFlags::NOCTTY | OpenptFlags::CLOEXEC,
+    )?)
+}
+
+/// `openpt` has no close-on-exec flag off Linux, so this opens the clone
+/// device it opens, with `O_CLOEXEC` in the same call.
 #[cfg(not(target_os = "linux"))]
-const OPENPT_CLOEXEC: OpenptFlags = OpenptFlags::empty();
+fn open_master() -> io::Result<OwnedFd> {
+    Ok(fs::open(
+        "/dev/ptmx",
+        OFlags::RDWR | OFlags::NOCTTY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )?)
+}
 
 /// The master end of a sheep's terminal, registered with the reactor.
 pub(super) struct PtyMaster {
@@ -47,9 +62,7 @@ pub(super) struct PtyMaster {
 /// Any of `posix_openpt`, `grantpt`, `unlockpt`, `ptsname`, the slave open,
 /// the window size or the master's registration failed.
 pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
-    let master = pty::openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY | OPENPT_CLOEXEC)?;
-    #[cfg(not(target_os = "linux"))]
-    rustix::io::fcntl_setfd(&master, rustix::io::FdFlags::CLOEXEC)?;
+    let master = open_master()?;
     pty::grantpt(&master)?;
     pty::unlockpt(&master)?;
     let name = pty::ptsname(&master, Vec::new())?;
