@@ -39,7 +39,7 @@ use super::super::pump::spawn_log_pump;
 use super::super::pump::spawn_stdin_pump;
 #[cfg(unix)]
 use super::super::runner::signallable_pid;
-use super::super::runner::{PATH_LIST_SEPARATOR, summarise_path, what_exec_will_find};
+use super::super::preflight::{PATH_LIST_SEPARATOR, summarise_path, what_exec_will_find};
 #[cfg(unix)]
 use super::super::signal_group;
 use super::*;
