@@ -115,7 +115,39 @@
       "license": "MIT OR Apache-2.0",
       "category": "other",
       "source": {
-        "kind": "cargo"
+        "kind": "cargo",
+        "version": "0.1.0",
+        "sha256": {
+          "aarch64-apple-darwin": "daccf926f5a4ca076fd5319b461f0ac8d92b24be3d0f689b0147437c1f6021c3",
+          "aarch64-unknown-linux-gnu": "1d297db1c08c49dfb2ff7a79240a4129edc162e735d187ee5be635d0587dd44e",
+          "aarch64-unknown-linux-musl": "09b2b84335978b6b82a0c1be53101fc9044f9795b0df7e8c56f53973e09c5ef7",
+          "x86_64-apple-darwin": "68ed597c3748180665588358144db5172d4dba3538b3483cff68884b1aeb0e1f",
+          "x86_64-pc-windows-msvc": "1886ac832bcb1a0f047f600691594427af4fd24e0a30a2adecdc6bdffba34063",
+          "x86_64-unknown-linux-gnu": "f042dc52bd9b2513b6a1aab9b68ac51592f2918b01a0f0f74572a662cad54456",
+          "x86_64-unknown-linux-musl": "7b8b731f955c8a08b15115fb9e35185d4fb79f26f75c4626d9bac735d9bd928a"
+        },
+        "permissions": [
+          {
+            "name": "flock.read",
+            "required": true
+          },
+          {
+            "name": "flock.control",
+            "required": true
+          },
+          {
+            "name": "flock.edit",
+            "required": true
+          },
+          {
+            "name": "events:process.",
+            "required": true
+          },
+          {
+            "name": "events:config.dog.",
+            "required": true
+          }
+        ]
       }
     },
     {
