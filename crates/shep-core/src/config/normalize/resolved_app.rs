@@ -243,6 +243,9 @@ pub fn normalize_with_home(
             return Err(NormalizeError::MaxTasksUnsupported { name: app.name });
         }
     }
+    if app.pty && !cfg!(unix) {
+        return Err(NormalizeError::PtyUnsupported { name: app.name });
+    }
     if let Some(name) = &app.kill_signal
         && KillSignal::parse(name).is_none()
     {

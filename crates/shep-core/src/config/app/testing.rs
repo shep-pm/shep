@@ -373,6 +373,12 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
             "any value on macOS or Windows",
             "normalize, off Linux only: normalize::tests",
         ),
+        refused_on_windows(
+            "pty",
+            "pty = true on Windows",
+            sheep(|a| a.pty = true),
+            |e| matches!(e, NormalizeError::PtyUnsupported { .. }),
+        ),
         refused(
             "name",
             "a path separator or a colon",
