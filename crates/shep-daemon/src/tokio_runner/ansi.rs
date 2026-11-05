@@ -43,11 +43,10 @@ enum State {
 /// Reads another reader's bytes as plain text: escape sequences removed, line
 /// ends normalised, and invalid UTF-8 replaced.
 ///
-/// A CSI, OSC or other escape sequence vanishes even when a read boundary
-/// falls inside it. A bare `\r`, and a CSI that moves the cursor or erases,
-/// end the line being written, unless it is empty, and `\r\n` becomes `\n`.
-/// Whatever the inner reader returns, the output is valid UTF-8 for
-/// `LineReader`, with `U+FFFD` for each invalid sequence.
+/// A sequence vanishes even when a read boundary falls inside it. A bare `\r`
+/// and a CSI that moves the cursor or erases each end a line that has text,
+/// and `\r\n` becomes `\n`. The output is valid UTF-8 for `LineReader`, with
+/// `U+FFFD` for each invalid sequence.
 pub(super) struct AnsiLines<R> {
     inner: R,
     state: State,

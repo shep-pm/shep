@@ -6,12 +6,16 @@ use core::task::{Context, Poll, ready};
 
 use std::io;
 use std::os::fd::OwnedFd;
+use std::process::Stdio;
 
 use rustix::fs::{self, Mode, OFlags};
 use rustix::pty::{self, OpenptFlags};
 use rustix::termios::{self, Winsize};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncRead, ReadBuf};
+use tokio::process::{ChildStdout, Command};
+
+use super::ansi::AnsiLines;
 
 /// Rows of every sheep's window. Fixed: nothing resizes it yet, and a program
 /// that wraps to the window should wrap once, wide enough for a log line.
@@ -71,6 +75,54 @@ pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
     #[allow(deprecated, reason = "register needs a newer tokio floor")]
     let fd = AsyncFd::new(master)?;
     Ok((PtyMaster { fd }, slave))
+}
+
+/// Puts `command`'s child on a new terminal: the slave as its fd 0, 1 and 2
+/// and its controlling terminal. Returns the master.
+///
+/// The parent's copies of the slave close when `command` drops, so the
+/// caller drops it once the child is spawned, and the master then reads the
+/// end of the stream when the child's last descriptor closes. The child leads
+/// its own process group, so the caller sets no `process_group`.
+///
+/// # Errors
+///
+/// [`open`] failed, or the slave could not be duplicated.
+pub(super) fn attach(command: &mut Command) -> io::Result<PtyMaster> {
+    let (master, slave) = open()?;
+    command.stdin(Stdio::from(slave.try_clone()?));
+    command.stdout(Stdio::from(slave.try_clone()?));
+    command.stderr(Stdio::from(slave));
+    crate::sys::take_terminal_on_exec(command.as_std_mut());
+    Ok(master)
+}
+
+/// What a sheep's log pump reads as its stdout.
+pub(super) enum Stdout {
+    /// The child's stdout pipe.
+    Pipe(ChildStdout),
+    /// The child's terminal, filtered to plain lines.
+    Terminal(AnsiLines<PtyReader>),
+}
+
+impl Stdout {
+    /// The master's output as plain lines.
+    pub(super) fn terminal(master: PtyMaster) -> Self {
+        Self::Terminal(AnsiLines::new(master.into_reader()))
+    }
+}
+
+impl AsyncRead for Stdout {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Self::Pipe(pipe) => Pin::new(pipe).poll_read(cx, buf),
+            Self::Terminal(lines) => Pin::new(lines).poll_read(cx, buf),
+        }
+    }
 }
 
 impl PtyMaster {

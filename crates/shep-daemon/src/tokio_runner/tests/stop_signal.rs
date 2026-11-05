@@ -39,7 +39,7 @@ async fn leader_with_a_sleeper(
 
 /// Waits until `pid` is gone. Signal 0 still succeeds on a zombie, so this
 /// waits for init to reap the orphan, which it does promptly.
-async fn is_gone_within_deadline(pid: Pid) -> bool {
+pub(super) async fn is_gone_within_deadline(pid: Pid) -> bool {
     timeout(PUMP_DEADLINE, async {
         while signal::kill(pid, None) != Err(Errno::ESRCH) {
             sleep(Duration::from_millis(10)).await;

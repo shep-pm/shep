@@ -350,6 +350,32 @@ pub(crate) fn set_listen_env(command: &mut std::process::Command, mut env: Liste
     unsafe { command.pre_exec(move || env.install()) };
 }
 
+/// Makes `command`'s child lead a new session with its fd 0, a terminal's
+/// slave, as the controlling terminal.
+///
+/// Run after std has installed the child's stdio, so fd 0 is already the
+/// slave. The child leads its own process group too, which is why a pty
+/// spawn must not also set `process_group`: `setsid` fails for a group leader.
+pub(crate) fn take_terminal_on_exec(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt as _;
+    // SAFETY: `pre_exec` requires the closure to be async-signal-safe.
+    // `take_terminal` makes two raw syscalls, `setsid` and `ioctl(TIOCSCTTY)`,
+    // and builds an `io::Error` from an errno; it allocates, locks and panics
+    // nowhere.
+    unsafe { command.pre_exec(take_terminal) };
+}
+
+/// `setsid`, then `TIOCSCTTY` on fd 0.
+fn take_terminal() -> io::Result<()> {
+    rustix::process::setsid()?;
+    // SAFETY: fd 0 is open for the whole call: std dup2'd the slave onto it
+    // before running the pre-exec hooks, and nothing closes it before the
+    // exec.
+    let terminal = unsafe { BorrowedFd::borrow_raw(0) };
+    rustix::process::ioctl_tiocsctty(terminal)?;
+    Ok(())
+}
+
 /// Makes `command`'s child write `0` to `procs`, an open `cgroup.procs`, so it
 /// joins that cgroup between the fork and the exec.
 ///

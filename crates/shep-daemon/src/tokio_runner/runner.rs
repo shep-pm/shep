@@ -49,6 +49,8 @@ use super::dog_link;
 use super::log_file::carried_sink;
 use super::log_file::{LogSink, PipeFds};
 use super::preflight::what_exec_will_find;
+#[cfg(unix)]
+use super::pty::{self, Stdout};
 use super::pump::{spawn_channel_pumps, spawn_log_pump, spawn_stdin_pump};
 #[cfg(windows)]
 use super::windows_pipe;
@@ -532,17 +534,34 @@ impl ProcessRunner for TokioRunner {
         let mut env = spec.env.clone();
         // `/dev/null` unless the app asked for a pipe: many programs decide
         // they are non-interactive from a closed fd 0. See `AppConfig::stdin`.
-        command.stdin(if spec.stdin {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        });
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
-        // New process group rooted at the child, so `kill_tree`'s
-        // negative-pid `SIGKILL` cannot reach the daemon's own group.
+        // A pty sheep's terminal replaces all three, and its `setsid` roots
+        // the process group `process_group` would.
         #[cfg(unix)]
-        command.process_group(0);
+        let pty_master =
+            if spec.pty {
+                Some(pty::attach(&mut command).map_err(|error| {
+                    RunnerError::SpawnFailed(format!("pseudo-terminal: {error}"))
+                })?)
+            } else {
+                None
+            };
+        #[cfg(unix)]
+        let piped = pty_master.is_none();
+        #[cfg(windows)]
+        let piped = true;
+        if piped {
+            command.stdin(if spec.stdin {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            });
+            command.stdout(Stdio::piped());
+            command.stderr(Stdio::piped());
+            // New process group rooted at the child, so `kill_tree`'s
+            // negative-pid `SIGKILL` cannot reach the daemon's own group.
+            #[cfg(unix)]
+            command.process_group(0);
+        }
 
         // Containment itself happens after `spawn()`: a process joins a job
         // only once it exists. These flags make that assignment meaningful by
@@ -859,8 +878,15 @@ impl ProcessRunner for TokioRunner {
         };
         #[cfg(not(unix))]
         let pipes = PipeFds;
+        #[cfg(unix)]
+        let stdout = match pty_master {
+            Some(master) => Some(Stdout::terminal(master)),
+            None => child.stdout.take().map(Stdout::Pipe),
+        };
+        #[cfg(windows)]
+        let stdout = child.stdout.take();
         spawn_log_pump(
-            child.stdout.take(),
+            stdout,
             child.stderr.take(),
             LogSink::Path(spec.out_file.clone()),
             LogSink::Path(spec.err_file.clone()),
@@ -871,7 +897,7 @@ impl ProcessRunner for TokioRunner {
         );
 
         let (to_stdin_tx, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
-        if spec.stdin {
+        if spec.stdin && !spec.pty {
             spawn_stdin_pump(child.stdin.take(), to_stdin_rx);
         } else {
             // Dropped rather than dangling, so a caller's `is_closed()` says
