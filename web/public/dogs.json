@@ -101,7 +101,17 @@
       "category": "other",
       "source": {
         "kind": "cargo",
-        "version": "0.2.2"
+        "version": "0.2.3",
+        "sha256": {
+          "aarch64-apple-darwin": "500c2c5cdf61d9795c31dbf3f4ac143144dea3998aa9b19eee11eed00f2fe681",
+          "aarch64-unknown-linux-gnu": "4eb19ae71ff767a994225733fd97c1e7040b55a2492a94b79c12180a8b1e6911",
+          "aarch64-unknown-linux-musl": "afd5363485b96a106403371e6d0ee706c81fe9bd43288b4430cca005a58450ab",
+          "x86_64-apple-darwin": "08f7c0eaaab9f34db061d623de23c8f3d6457ebf3ec8df11be10960c717d18ab",
+          "x86_64-pc-windows-msvc": "7f5ed5079d78b749f24d6a22405b1ad74860b6d3158982f7dafaaa9b3556a316",
+          "x86_64-unknown-linux-gnu": "ca05ca69d41ac4e76ff144f83d2279cc9afd1ae1a020a2829527c0066cbde44f",
+          "x86_64-unknown-linux-musl": "6437bd4bce75ca311b6f1ed4f84ca287e7632549cdb645a2cb07bde6abc3ee8d"
+        },
+        "permissions": []
       }
     }
   ]
