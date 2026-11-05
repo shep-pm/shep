@@ -42,7 +42,46 @@
       "category": "interactive",
       "source": {
         "kind": "cargo",
-        "version": "0.3.4"
+        "version": "0.3.5",
+        "sha256": {
+          "aarch64-apple-darwin": "d2a3a15abab5096de9d110d95376920b4adf9212d07d4e6b080c2058e21505e9",
+          "aarch64-unknown-linux-gnu": "a1e8ca60c5775638bfc19c3a0aaeee441b3e2d9f350ebc7fb6413941fa9125f8",
+          "aarch64-unknown-linux-musl": "0e31f8eee5e7bda115bb79f98b9a7768356fb5de015e33eadb8a003f4dc1f890",
+          "x86_64-apple-darwin": "6fe3c563347b58730aa99776eb444ee7fe1f49914aaed8ccdede4c89d8b819ba",
+          "x86_64-pc-windows-msvc": "db6b1d0b85e47eb682e7ea6534912b8e3776101b0f2782e186386abed0999668",
+          "x86_64-unknown-linux-gnu": "88b0e7de27de9868a138f1d46842489e5ede3dc9bd64c0c8b273181f3f60ac78",
+          "x86_64-unknown-linux-musl": "ccd1d536702775bcae1651673cb40463dcd18c4ef278123d368f9de1dd93f3c9"
+        },
+        "permissions": [
+          {
+            "name": "flock.read",
+            "required": true
+          },
+          {
+            "name": "events:log.",
+            "required": true
+          },
+          {
+            "name": "events:process.",
+            "required": true
+          },
+          {
+            "name": "flock.control",
+            "required": false
+          },
+          {
+            "name": "flock.edit",
+            "required": false
+          },
+          {
+            "name": "dogs.control",
+            "required": false
+          },
+          {
+            "name": "logs.manage",
+            "required": false
+          }
+        ]
       },
       "needs": [
         "alerts"
