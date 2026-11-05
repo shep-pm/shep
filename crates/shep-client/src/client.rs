@@ -469,7 +469,7 @@ impl Client {
     ///
     /// - [`RequestError::Rpc`]: the daemon answered with a structured error,
     ///   or `body` carries a key a shepherd below its protocol version would
-    ///   drop (`dogs.sandbox`, `sandbox`, `listen`, `memory_enforce`, `max_cpu_cores`, `max_tasks`; see [`Request::gated_key_dropped_at`]),
+    ///   drop (`dogs.sandbox`, `sandbox`, `listen`, `memory_enforce`, `max_cpu_cores`, `max_tasks`, `pty`; see [`Request::gated_key_dropped_at`]),
     ///   which is refused as `Unsupported` before anything is sent.
     /// - [`RequestError::Timeout`]: no reply within `deadline + DEADLINE_GRACE`.
     /// - [`RequestError::Closed`]: the connection closed before a reply arrived.
@@ -567,8 +567,8 @@ mod tests {
     use shep_core::config::MemoryEnforce;
     use shep_core::exit;
     use shep_core::protocol::{
-        LISTEN_SINCE, MAX_CPU_CORES_SINCE, MAX_TASKS_SINCE, MEMORY_ENFORCE_SINCE, RpcErrorCode,
-        SANDBOX_DOG_SINCE,
+        LISTEN_SINCE, MAX_CPU_CORES_SINCE, MAX_TASKS_SINCE, MEMORY_ENFORCE_SINCE, PTY_SINCE,
+        RpcErrorCode, SANDBOX_DOG_SINCE,
     };
 
     use super::*;
@@ -821,6 +821,34 @@ mod tests {
         };
         assert_eq!(rpc.code, RpcErrorCode::Unsupported);
         assert!(rpc.message.contains("`max_tasks`"), "{}", rpc.message);
+        assert!(rpc.message.contains("nothing was sent"), "{}", rpc.message);
+        assert!(sent.try_recv().is_err(), "the request reached the wire");
+    }
+
+    fn pty_start() -> Request {
+        let mut app = shep_core::config::AppConfig::minimal("web", "./srv");
+        app.pty = true;
+        Request::Start { apps: vec![app] }
+    }
+
+    #[tokio::test]
+    async fn a_pty_key_is_not_sent_to_an_older_shepherd() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::testing::control_address(dir.path());
+        let ack = HelloAck {
+            protocol: PTY_SINCE - 1,
+            ..crate::testing::sample_ack()
+        };
+        let (client, mut sent) =
+            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
+
+        let refused = client.request(pty_start()).await.unwrap_err();
+
+        let RequestError::Rpc(rpc) = &refused else {
+            panic!("expected a refusal, got {refused:?}");
+        };
+        assert_eq!(rpc.code, RpcErrorCode::Unsupported);
+        assert!(rpc.message.contains("`pty`"), "{}", rpc.message);
         assert!(rpc.message.contains("nothing was sent"), "{}", rpc.message);
         assert!(sent.try_recv().is_err(), "the request reached the wire");
     }
