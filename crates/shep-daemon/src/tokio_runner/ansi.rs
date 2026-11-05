@@ -19,7 +19,7 @@ const STRING_LIMIT: usize = 4096;
 
 /// CSI final bytes that move the cursor or erase: each ends the line being
 /// written, since what follows overwrites or replaces it.
-const LINE_BREAKING_FINALS: &[u8] = b"ABCDEFGHJKXdf`";
+const LINE_BREAKING_FINALS: &[u8] = b"ABCDEFGHJKXadef`";
 
 /// Where the filter is inside an escape sequence.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -316,6 +316,8 @@ mod tests {
         assert_eq!(filtered(&[b"10%\r20%\r30%\n"]).await, "10%\n20%\n30%\n");
         assert_eq!(filtered(&[b"one\x1b[2;1Htwo\n"]).await, "one\ntwo\n");
         assert_eq!(filtered(&[b"gone\x1b[Kthere\n"]).await, "gone\nthere\n");
+        // HPR and VPR move the cursor relative to it, like `C` and `B`.
+        assert_eq!(filtered(&[b"a\x1b[1ab\x1b[1ec\n"]).await, "a\nb\nc\n");
     }
 
     #[tokio::test]
