@@ -41,7 +41,7 @@ pub struct PostReply {
 /// Every [`FetchError`] variant except [`FetchError::Url`] and
 /// [`FetchError::Redirect`] can come out: a connect or TLS failure, a
 /// malformed head, a header block over [`MAX_HEADER_BYTES`],
-/// [`FetchError::Chunked`], [`FetchError::TooLarge`] over
+/// [`FetchError::TransferEncoding`], [`FetchError::TooLarge`] over
 /// [`MAX_POST_BODY_BYTES`], [`FetchError::Truncated`], [`FetchError::Status`]
 /// for a non-2xx, or [`FetchError::Timeout`]. A 3xx is refused as its status.
 pub async fn post_json(
@@ -157,7 +157,7 @@ async fn read_post_reply<S: AsyncRead + Unpin>(stream: S) -> Result<PostReply, F
         return Err(FetchError::Status(code));
     }
     if transfer_encoding {
-        return Err(FetchError::Chunked);
+        return Err(FetchError::TransferEncoding);
     }
     if !content_length_ok {
         return Err(FetchError::Transport(std::io::Error::other(
