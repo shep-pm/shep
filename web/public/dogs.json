@@ -13,7 +13,26 @@
       "category": "logs",
       "source": {
         "kind": "cargo",
-        "version": "0.2.10"
+        "version": "0.2.11",
+        "sha256": {
+          "aarch64-apple-darwin": "1624861c5eca6b2f9d61bdc0f362b09d7c4187a174fa248d44f306f00752116d",
+          "aarch64-unknown-linux-gnu": "24c8372db5e7a0c9f96c9a4309d19b170c2a585de4e0c9e602ba043ccc187b5f",
+          "aarch64-unknown-linux-musl": "13c6d03053d6b87bf6b98d40d08761e14c99748b7de20ca0aecad090e504134c",
+          "x86_64-apple-darwin": "d8d5b6adebd2e65c084b723d9421dfdcf33d3bb970f21094b163e91a0113f5e2",
+          "x86_64-pc-windows-msvc": "b56d43cfef3afde328aca5ddcfdc8eb22182e63052ae8135266cf74d78010695",
+          "x86_64-unknown-linux-gnu": "8ed38fcb95ff33ea011bff11564174cda7385d8be5ace760936940110947f085",
+          "x86_64-unknown-linux-musl": "c90bd1120394ed7a21fec45e7e6081eb24c63553b58862d468dc53b2db5b8c5a"
+        },
+        "permissions": [
+          {
+            "name": "flock.read",
+            "required": true
+          },
+          {
+            "name": "logs.manage",
+            "required": true
+          }
+        ]
       },
       "needs": [
         "logs"
