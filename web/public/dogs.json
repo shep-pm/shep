@@ -13,7 +13,7 @@
       "category": "logs",
       "source": {
         "kind": "cargo",
-        "version": "0.2.4"
+        "version": "0.2.10"
       },
       "needs": [
         "logs"
@@ -29,7 +29,7 @@
       "category": "deploy",
       "source": {
         "kind": "cargo",
-        "version": "0.6.6"
+        "version": "0.7.0"
       }
     },
     {
@@ -47,6 +47,43 @@
       "needs": [
         "alerts"
       ]
+    },
+    {
+      "name": "Paddy",
+      "package": "shep-paddock",
+      "adopt_as": "paddock",
+      "description": "Leases one host's GPU and RAM to model servers and jobs, behind a single endpoint.",
+      "repo": "https://github.com/shep-pm/shep-paddock",
+      "license": "MIT OR Apache-2.0",
+      "category": "other",
+      "source": {
+        "kind": "cargo"
+      }
+    },
+    {
+      "name": "Bao",
+      "package": "shep-openbao",
+      "adopt_as": "openbao",
+      "description": "Mirrors secrets from OpenBao into shep's secrets store.",
+      "repo": "https://github.com/shep-pm/shep-openbao",
+      "license": "MIT OR Apache-2.0",
+      "category": "other",
+      "source": {
+        "kind": "cargo"
+      }
+    },
+    {
+      "name": "Sandy",
+      "package": "shep-sandbox",
+      "adopt_as": "sandbox",
+      "description": "Runs a sheep inside a crabpot sandbox.",
+      "repo": "https://github.com/shep-pm/shep-sandbox",
+      "license": "MIT OR Apache-2.0",
+      "category": "other",
+      "source": {
+        "kind": "cargo",
+        "version": "0.2.2"
+      }
     }
   ]
 }
