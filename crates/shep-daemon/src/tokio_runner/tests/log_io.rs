@@ -371,6 +371,7 @@ async fn the_idle_flush_window_is_measured_from_the_oldest_buffered_line() {
         #[cfg(unix)]
         parked: false,
         behind: false,
+        live_waited: Duration::ZERO,
     };
     assert_eq!(
         files.flush_deadline(),
@@ -728,4 +729,46 @@ async fn dropping_the_control_sender_ends_the_pump() {
         .await
         .expect("the pump must end once nothing can control it");
     assert!(after.is_none(), "a pump that has ended sends nothing more");
+}
+
+/// Fails if a reader that frees a slot just in time on every line holds a pty
+/// pump at its pace. The pump is the only reader its terminal has, and macOS
+/// reads a master for about 0.6s after its last slave closes, so a pump that
+/// pays a wait per line loses the sheep's tail outright rather than only its
+/// live copies.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_pty_pump_does_not_pay_a_wait_per_line_to_a_reader_that_keeps_just_up() {
+    const LINES: usize = CHANNEL_CAPACITY + 12;
+    /// Under [`LIVE_WAIT`], so a pump that pays one wait per line finds a
+    /// slot for every one of them.
+    const READER_GAP: Duration = Duration::from_millis(40);
+    let mut pump = PumpHarness::start_as_a_pty_pump();
+    let mut written = String::new();
+    for n in 0..LINES {
+        let line = format!("line-{n}\n");
+        pump.out_writer.write_all(line.as_bytes()).await.unwrap();
+        written.push_str(&line);
+    }
+    drop(pump.out_writer);
+    drop(pump.err_writer);
+
+    let mut forwarded = 0;
+    timeout(PUMP_DEADLINE, async {
+        while pump.logs.recv().await.is_some() {
+            forwarded += 1;
+            tokio::time::sleep(READER_GAP).await;
+        }
+    })
+    .await
+    .expect("the pump must end once its streams close");
+
+    // Giving up on live copies is the point: the file has every line either
+    // way, and a pump that forwarded all of them was reading its terminal at
+    // this reader's pace.
+    assert!(
+        forwarded < LINES,
+        "a pump held at its reader\'s pace forwarded all {forwarded} of {LINES}"
+    );
+    assert_file_settles(&pump.out_path, &written).await;
 }

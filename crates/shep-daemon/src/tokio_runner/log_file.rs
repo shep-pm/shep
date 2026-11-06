@@ -3,6 +3,7 @@
 //! [`open_append`], the low-level open both a fresh spawn and a reopen go
 //! through.
 
+use core::time::Duration;
 use std::collections::HashMap;
 use std::io;
 #[cfg(unix)]
@@ -357,13 +358,20 @@ pub(super) struct LogFiles {
     /// See [`LogFiles::reading`] for why a report parks a pump at all.
     #[cfg(unix)]
     pub(super) parked: bool,
-    /// Whether this pump has given up waiting for room on `logs` and is
-    /// writing to its files only.
+    /// Whether this pump has spent its live-bus budget and is writing to its
+    /// files only, for the stall that spent it.
     ///
     /// Set when a pty pump's [`super::pump::LIVE_WAIT`] runs out and cleared
-    /// by the next slot it finds. While it is set a line is skipped at once,
-    /// so one stalled reader costs one wait rather than one per line.
+    /// once a reader drains `logs`. While it is set a line takes a free slot
+    /// or is skipped at once, and the shepherd warns once for the stall.
     pub(super) behind: bool,
+    /// How long this pump has been waiting on `logs` since a reader last
+    /// drained it.
+    ///
+    /// [`super::pump::LIVE_WAIT`] bounds a whole stall rather than one line,
+    /// so a reader that frees a slot just in time on every line cannot hold
+    /// the pump at its pace. See [`LogFiles::keeps_reading`].
+    pub(super) live_waited: Duration,
 }
 
 impl LogFiles {

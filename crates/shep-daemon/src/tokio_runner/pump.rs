@@ -13,6 +13,7 @@ use tokio::time::{Instant, Sleep, sleep_until, timeout, timeout_at};
 use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::runner::{LogCtl, LogLine, RunnerError, StdinWrite};
 
+use super::CHANNEL_CAPACITY;
 use super::FINAL_DRAIN;
 #[cfg(unix)]
 use super::READ_BUFFER;
@@ -29,8 +30,8 @@ enum AfterLine {
     LogsClosed,
 }
 
-/// How long a pty pump waits for room on `logs` before it skips that line's
-/// live copy.
+/// How long a pty pump may wait for room on `logs` across one stall before
+/// it skips live copies until a reader drains the channel.
 ///
 /// macOS drops what a terminal slave queued about 0.6s after that slave's last
 /// descriptor closes, and a stop holds the sheep task in `kill_process` for up
@@ -63,8 +64,8 @@ fn take_slot<'tx>(logs_tx: &'tx mpsc::Sender<LogLine>) -> Slot<'tx> {
 ///
 /// The wait for room on `logs_tx` keeps serving `ctl_rx`; see
 /// [`reserve_slot`] for the cycle that would otherwise close. A pty pump
-/// bounds that wait at [`LIVE_WAIT`] and then drops the live copy alone: the
-/// line is already in the file.
+/// bounds that whole stall at [`LIVE_WAIT`] and then drops the live copy
+/// alone: the line is already in the file.
 async fn deliver_line<O, E>(
     result: io::Result<Option<String>>,
     err: bool,
@@ -80,21 +81,15 @@ where
     match result {
         Ok(Some(line)) => {
             files.stream(err).append(&line).await;
-            // A pump already behind its live bus takes a free slot or skips
-            // at once, so one stalled reader costs one wait rather than one
-            // per line.
-            let slot = if files.behind {
-                take_slot(logs_tx)
-            } else {
-                // A piped pump waits for room as long as it takes, which is
-                // the backpressure a pipe gives it. A pty pump waits at most
-                // `LIVE_WAIT`, being the only reader its terminal has.
-                let live_by = files.keeps_reading().then(|| Instant::now() + LIVE_WAIT);
-                reserve_slot(logs_tx, files, ctl_rx, streams, live_by).await
-            };
+            // A reader that has drained `logs` kept up with this pump, so its
+            // next stall gets a whole `LIVE_WAIT` to spend.
+            if logs_tx.capacity() == CHANNEL_CAPACITY {
+                files.behind = false;
+                files.live_waited = Duration::ZERO;
+            }
+            let slot = reserve_slot(logs_tx, files, ctl_rx, streams).await;
             match slot {
                 Slot::Got(slot) => {
-                    files.behind = false;
                     slot.send(LogLine { err, line });
                     AfterLine::KeepReading
                 }
@@ -120,7 +115,7 @@ where
 }
 
 /// Waits for room on `logs_tx`, serving control requests and idle flushes
-/// while it waits, and answers [`Slot::GaveUp`] when `live_by` runs out.
+/// while it waits, and gives up once this pump's live-bus budget is spent.
 ///
 /// A pump parked on a full `logs` channel is parked for as long as the sheep
 /// task takes, so without the idle-flush branch the line just appended would
@@ -131,7 +126,6 @@ async fn reserve_slot<'tx, O, E>(
     files: &mut LogFiles,
     ctl_rx: &mut mpsc::Receiver<LogCtl>,
     streams: &mut Streams<O, E>,
-    live_by: Option<Instant>,
 ) -> Slot<'tx>
 where
     O: AsyncRead + Unpin,
@@ -143,6 +137,18 @@ where
     if !matches!(first, Slot::GaveUp) {
         return first;
     }
+    // The channel is full. A piped pump waits as long as the backpressure a
+    // pipe gives it asks. A pty pump has `LIVE_WAIT` across a whole stall, so
+    // a reader that frees a slot just in time on every line cannot hold it at
+    // that reader's pace, it being the only reader its terminal has.
+    let left = files
+        .keeps_reading()
+        .then(|| LIVE_WAIT.saturating_sub(files.live_waited));
+    if left == Some(Duration::ZERO) {
+        return Slot::GaveUp;
+    }
+    let live_by = left.map(|left| Instant::now() + left);
+    let mut waiting = Instant::now();
     loop {
         // Recomputed every iteration from the stored mark, so losing the
         // race never extends the window.
@@ -153,12 +159,20 @@ where
         // is rebuilt against the same absolute deadline.
         tokio::select! {
             slot = logs_tx.reserve() => match slot {
-                Ok(slot) => return Slot::Got(slot),
+                Ok(slot) => {
+                    files.live_waited += waiting.elapsed();
+                    return Slot::Got(slot);
+                }
                 // `reserve` waits, so a failure is a closed receiver.
                 Err(_) => return Slot::Closed,
             },
             ctl = ctl_rx.recv() => match ctl {
-                Some(ctl) => files.serve(ctl, streams).await,
+                Some(ctl) => {
+                    files.serve(ctl, streams).await;
+                    // Serving a request is not waiting on `logs`, so a park
+                    // for a handover spends nothing of this pump's budget.
+                    waiting = Instant::now();
+                }
                 // The line in hand is still owed to the receiver. Awaited
                 // outside the `select!` rather than looping, since a closed
                 // receiver is ready on every poll. `reserve` on its own is
@@ -166,9 +180,15 @@ where
                 None => {
                     return match live_by {
                         Some(at) => match timeout_at(at, logs_tx.reserve()).await {
-                            Ok(Ok(slot)) => Slot::Got(slot),
+                            Ok(Ok(slot)) => {
+                                files.live_waited += waiting.elapsed();
+                                Slot::Got(slot)
+                            }
                             Ok(Err(_)) => Slot::Closed,
-                            Err(_) => Slot::GaveUp,
+                            Err(_) => {
+                                files.live_waited += waiting.elapsed();
+                                Slot::GaveUp
+                            }
                         },
                         None => match logs_tx.reserve().await {
                             Ok(slot) => Slot::Got(slot),
@@ -183,6 +203,7 @@ where
             // Re-checked rather than given up on sight: a slot that came
             // ready in the same poll is worth taking.
             () = sleep_until(live_by.unwrap_or_else(Instant::now)), if live_by.is_some() => {
+                files.live_waited += waiting.elapsed();
                 return take_slot(logs_tx);
             }
         }
@@ -369,6 +390,7 @@ pub(super) fn spawn_log_pump<O, E>(
             #[cfg(unix)]
             parked: false,
             behind: false,
+            live_waited: Duration::ZERO,
         };
         let mut streams = Streams {
             out: stdout.map(|reader| LineReader::new(with_read_buffer(reader))),
