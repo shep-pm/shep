@@ -2,11 +2,11 @@
 //! sheep alive across the exec.
 //!
 //! [`CarriedSheep`] is one row of the blob, holding both what the sheep is
-//! and what it is currently doing. [`CarriedFds`] is the seven descriptor
-//! numbers its output, input, shepherd channel and, for a dog, its own
-//! connection travel on, and [`SheepFd`] says which of the seven a number is,
-//! since the adoption path refuses a pipe and a log handle by opposite
-//! checks.
+//! and what it is currently doing. [`CarriedFds`] is the eight descriptor
+//! numbers its output, input, shepherd channel, a pty sheep's terminal master
+//! and, for a dog, its own connection travel on, and [`SheepFd`] says which of
+//! the eight a number is, since the adoption path refuses a pipe and a log
+//! handle by opposite checks.
 
 use std::os::fd::RawFd;
 use std::time::SystemTime;
@@ -533,9 +533,16 @@ pub struct CarriedFds {
     /// that is not running, and for one whose connection had already closed.
     /// An absent field loads as `None`.
     pub dog_link: Option<RawFd>,
+    /// The master side of a pty sheep's pseudo-terminal, which the child has
+    /// as its stdio.
+    ///
+    /// `None` for a sheep that runs on pipes and for one that is not running.
+    /// An absent field loads as `None`, so [`VERSION`](super::VERSION) is
+    /// unmoved.
+    pub pty: Option<RawFd>,
 }
 
-/// Which of a sheep's seven descriptors a number is. A stdout pipe and a stdin
+/// Which of a sheep's eight descriptors a number is. A stdout pipe and a stdin
 /// pipe are both pipes and are refused by opposite checks, so the slot has to
 /// travel with the number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -554,6 +561,8 @@ pub(crate) enum SheepFd {
     Channel,
     /// The daemon's end of the dog's own connection ([`CarriedFds::dog_link`]).
     DogLink,
+    /// The master side of its pseudo-terminal ([`CarriedFds::pty`]).
+    Pty,
 }
 
 impl SheepFd {
@@ -568,16 +577,17 @@ impl SheepFd {
             Self::Stdin => "stdin pipe",
             Self::Channel => "shepherd channel",
             Self::DogLink => "dog connection",
+            Self::Pty => "pty master",
         }
     }
 }
 
 impl CarriedFds {
-    /// The seven numbers in a fixed order: stdout's pipe, stderr's pipe,
+    /// The eight numbers in a fixed order: stdout's pipe, stderr's pipe,
     /// stdout's log, stderr's log, stdin's pipe, the shepherd channel, the
-    /// dog's connection.
+    /// dog's connection, the pty master.
     #[must_use]
-    pub const fn all(&self) -> [Option<RawFd>; 7] {
+    pub const fn all(&self) -> [Option<RawFd>; 8] {
         [
             self.out_pipe,
             self.err_pipe,
@@ -586,15 +596,16 @@ impl CarriedFds {
             self.stdin,
             self.channel,
             self.dog_link,
+            self.pty,
         ]
     }
 
-    /// [`Self::all`], with each number labelled by which of the seven it is.
+    /// [`Self::all`], with each number labelled by which of the eight it is.
     ///
     /// [`adopt`](super::adopt::adopt) and [`dry_run`](super::adopt::dry_run)
     /// must agree on the kinds: a number rehearsed as the wrong kind is a
     /// rehearsal that passes and a boot that still fails.
-    pub(crate) const fn all_kinded(&self) -> [(Option<RawFd>, SheepFd); 7] {
+    pub(crate) const fn all_kinded(&self) -> [(Option<RawFd>, SheepFd); 8] {
         [
             (self.out_pipe, SheepFd::OutPipe),
             (self.err_pipe, SheepFd::ErrPipe),
@@ -603,6 +614,7 @@ impl CarriedFds {
             (self.stdin, SheepFd::Stdin),
             (self.channel, SheepFd::Channel),
             (self.dog_link, SheepFd::DogLink),
+            (self.pty, SheepFd::Pty),
         ]
     }
 
@@ -618,6 +630,7 @@ impl CarriedFds {
             stdin: None,
             channel: None,
             dog_link: None,
+            pty: None,
         }
     }
 }
@@ -626,6 +639,7 @@ impl CarriedFds {
 mod tests {
     use super::{CarriedFds, CarriedSheep, SheepFd};
     use crate::entry::ReloadState;
+    use crate::handover::adopt::dry_run;
     use crate::handover::fixtures::{carried, entry_fixture, fds_at, plain};
     use crate::handover::{Counters, DaemonFds, Fitness, Handover, fitness};
     use crate::supervisor::{CommandOrigin, ManualKind, PendingManual};
@@ -741,7 +755,7 @@ mod tests {
         );
     }
 
-    /// Seven distinct numbers, so the equality below is about the pairing
+    /// Eight distinct numbers, so the equality below is about the pairing
     /// rather than the length.
     #[test]
     fn every_carried_number_is_kinded_in_the_same_order() {
@@ -753,6 +767,7 @@ mod tests {
             stdin: Some(14),
             channel: Some(15),
             dog_link: Some(16),
+            pty: Some(17),
         };
 
         assert_eq!(
@@ -763,6 +778,76 @@ mod tests {
 
         let slots: std::collections::HashSet<SheepFd> =
             fds.all_kinded().iter().map(|(_, slot)| *slot).collect();
-        assert_eq!(slots.len(), 7, "each slot must appear exactly once");
+        assert_eq!(slots.len(), 8, "each slot must appear exactly once");
+    }
+
+    /// The master travels in the blob like any other number, so a successor
+    /// reading it back finds the same descriptor.
+    #[test]
+    fn a_blob_round_trips_a_pty_descriptor() {
+        let mut blob = sample_blob();
+        blob.sheep[0].fds.pty = Some(40);
+
+        let back: Handover = serde_json::from_str(&serde_json::to_string(&blob).unwrap()).unwrap();
+
+        assert_eq!(back.sheep()[0].fds().pty, Some(40));
+        assert_eq!(back, blob);
+    }
+
+    /// An absent key is what every earlier release wrote, so
+    /// [`VERSION`](crate::handover::VERSION) is unmoved.
+    #[test]
+    fn a_blob_without_a_pty_key_loads_as_none() {
+        let mut blob = sample_blob();
+        blob.sheep[0].fds.pty = Some(40);
+        let mut value = serde_json::to_value(&blob).unwrap();
+        let fds = value["sheep"][0]["fds"]
+            .as_object_mut()
+            .expect("a carried sheep names its descriptors");
+        assert!(
+            fds.remove("pty").is_some(),
+            "the key this case removes must be there to remove"
+        );
+
+        let loaded = Handover::load_value(value).expect("an older blob must still load");
+
+        assert_eq!(loaded.sheep()[0].fds().pty, None);
+        assert_eq!(
+            loaded.sheep()[0].fds().out_pipe,
+            blob.sheep()[0].fds().out_pipe,
+            "the other descriptors are unchanged by the one that was absent"
+        );
+    }
+
+    /// Two owners of one number close it twice, so the walk the repeat check
+    /// reads must include the master.
+    #[test]
+    fn a_pty_master_named_twice_is_refused() {
+        let mut blob = sample_blob();
+        let fds = &mut blob.sheep[0].fds;
+        fds.pty = fds.out_pipe;
+
+        let err = dry_run(&blob).expect_err("one number cannot have two owners");
+
+        assert!(
+            err.to_string().contains("more than once"),
+            "the refusal must be the repeat check's own: {err}"
+        );
+    }
+
+    fn sample_blob() -> Handover {
+        Handover::new(
+            vec![carried(&entry_fixture(|_| {}))],
+            DaemonFds {
+                listener: 3,
+                pidfile: 4,
+            },
+            Counters {
+                next_id: 9,
+                next_deadline: 5,
+                next_action_stamp: 2,
+            },
+            Vec::new(),
+        )
     }
 }

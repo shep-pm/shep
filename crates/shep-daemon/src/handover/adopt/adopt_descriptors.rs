@@ -63,6 +63,17 @@ pub struct AdoptedSheep {
     /// not (the blob's `dog_topics` says which). `None` for a sheep that is not
     /// a dog, a dog that is not running, and one whose connection had closed.
     pub dog_link: Option<tokio::net::UnixStream>,
+    /// The master side of its pseudo-terminal, whose slave is the child's
+    /// stdio.
+    ///
+    /// Taken as the descriptor it was, with no reactor registration: the
+    /// pump that reads it registers it. `None` for a sheep that runs on pipes
+    /// and for one that is not running.
+    #[allow(
+        dead_code,
+        reason = "nothing reads the master until a pty sheep is carried"
+    )]
+    pub pty: Option<File>,
 }
 
 /// Rebuild everything `blob` describes, around descriptors this process
@@ -123,7 +134,7 @@ pub(super) fn adopt_listener(fd: RawFd) -> io::Result<tokio::net::UnixListener> 
     tokio::net::UnixListener::from_std(listener)
 }
 
-/// Rebuild one sheep's seven handles.
+/// Rebuild one sheep's eight handles.
 fn adopt_sheep(carried: &CarriedSheep) -> io::Result<AdoptedSheep> {
     let CarriedFds {
         out_pipe,
@@ -133,6 +144,7 @@ fn adopt_sheep(carried: &CarriedSheep) -> io::Result<AdoptedSheep> {
         stdin,
         channel,
         dog_link,
+        pty,
     } = carried.fds;
     let name = &carried.name;
     Ok(AdoptedSheep {
@@ -143,6 +155,7 @@ fn adopt_sheep(carried: &CarriedSheep) -> io::Result<AdoptedSheep> {
         stdin_pipe: adopt_stdin(stdin, name)?,
         channel: adopt_channel(channel, name)?,
         dog_link: adopt_dog_link(dog_link, name)?,
+        pty: adopt_pty(pty, name)?,
         carried: carried.clone(),
     })
 }
@@ -188,6 +201,23 @@ fn adopt_connected(fd: Option<RawFd>, what: &str) -> io::Result<Option<tokio::ne
     })?;
     socket.set_nonblocking(true)?;
     tokio::net::UnixStream::from_std(socket).map(Some)
+}
+
+/// Take one sheep's pty master, if the blob named one.
+///
+/// `isatty` is the kind check: it answers `ENOTTY` for a pipe, a socket or a
+/// plain file, which `adopt_fd` alone would take. A pty master answers true
+/// on Linux and macOS alike.
+pub(super) fn adopt_pty(fd: Option<RawFd>, sheep: &str) -> io::Result<Option<File>> {
+    let Some(fd) = fd else { return Ok(None) };
+    let file = adopt_fd(fd, &format!("sheep '{sheep}' pty master"))?;
+    if !rustix::termios::isatty(&file) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("sheep '{sheep}' pty master is not a terminal"),
+        ));
+    }
+    Ok(Some(file))
 }
 
 /// Rebuild one pipe read end as an async reader, if the blob named one.
@@ -294,6 +324,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             })],
         );
         blob.sheep[0].fds.out_log = Some(blob.listener_fd);
@@ -327,6 +358,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -357,6 +389,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -389,6 +422,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             })],
         );
         let pidfile_fd = blob.pidfile_fd;
@@ -418,6 +452,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -454,6 +489,7 @@ mod tests {
                 stdin: Some(daemon_end.into_raw_fd()),
                 channel: None,
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -490,6 +526,7 @@ mod tests {
                 stdin: Some(reader.into_raw_fd()),
                 channel: None,
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -523,6 +560,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -554,6 +592,7 @@ mod tests {
                 stdin: None,
                 channel: Some(daemon_end.into_raw_fd()),
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -612,6 +651,7 @@ mod tests {
                 stdin: None,
                 channel: Some(file.into_raw_fd()),
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -648,6 +688,7 @@ mod tests {
                 stdin: None,
                 channel: Some(listening.into_raw_fd()),
                 dog_link: None,
+                pty: None,
             })],
         );
 
@@ -656,6 +697,66 @@ mod tests {
         assert!(
             err.to_string().contains("shepherd channel"),
             "the refusal must name what could not be adopted: {err}"
+        );
+    }
+
+    /// A master opened the way the pty runner opens one: the kind `isatty`
+    /// must accept, on this platform's own pseudo-terminal driver.
+    fn open_master() -> std::os::fd::OwnedFd {
+        use rustix::pty::{OpenptFlags, grantpt, openpt, unlockpt};
+        let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+        grantpt(&master).unwrap();
+        unlockpt(&master).unwrap();
+        master
+    }
+
+    #[tokio::test]
+    async fn a_pty_master_is_adopted() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("shep.sock");
+        let master = open_master();
+        let blob = blob_with(
+            &socket,
+            vec![carried(CarriedFds {
+                pty: Some(master.into_raw_fd()),
+                ..CarriedFds::none()
+            })],
+        );
+
+        let adopted = adopt(&blob).expect("a pty master is adoptable");
+
+        let held = adopted.sheep[0].pty.as_ref().expect("the adopted master");
+        assert!(
+            rustix::termios::isatty(held),
+            "the adopted handle is still the terminal it was"
+        );
+    }
+
+    /// `adopt_fd` takes any open descriptor, so a pipe in the pty slot is
+    /// found only by the terminal check.
+    #[tokio::test]
+    async fn a_pipe_offered_as_a_pty_master_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("shep.sock");
+        let (reader, _writer) = std::io::pipe().unwrap();
+        let blob = blob_with(
+            &socket,
+            vec![carried(CarriedFds {
+                pty: Some(reader.into_raw_fd()),
+                ..CarriedFds::none()
+            })],
+        );
+
+        let err = adopt(&blob).expect_err("a pipe is no terminal");
+
+        let text = err.to_string();
+        assert!(
+            text.contains("web"),
+            "the refusal must name the sheep: {text}"
+        );
+        assert!(
+            text.contains("pty master"),
+            "the refusal must name what could not be adopted: {text}"
         );
     }
 }

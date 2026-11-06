@@ -120,6 +120,7 @@ async fn two_pumps_on_one_log_path_report_different_numbers() {
             err: Some(err_reader.as_raw_fd()),
             stdin: None,
             channel: None,
+            pty: None,
         };
         let (logs_tx, _logs) = mpsc::channel(CHANNEL_CAPACITY);
         let (ctl, ctl_rx) = mpsc::channel(CHANNEL_CAPACITY);
@@ -299,6 +300,7 @@ async fn a_report_leaves_in_the_pipe_everything_it_did_not_write() {
         err: None,
         stdin: None,
         channel: None,
+        pty: None,
     };
     spawn_log_pump(
         Some(reader),

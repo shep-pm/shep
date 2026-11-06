@@ -590,6 +590,7 @@ mod tests {
             stdin_pipe: None,
             channel: None,
             dog_link: None,
+            pty: None,
         }
     }
 
