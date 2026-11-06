@@ -67,6 +67,7 @@ mod handover_disabled;
 mod handover_dog_link;
 mod handover_dogs;
 mod handover_extras;
+mod handover_pty;
 mod home_and_watch;
 mod host_flag;
 mod hosts;

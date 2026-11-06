@@ -330,7 +330,8 @@ pub(super) struct PipeFds {
     pub(super) channel: Option<RawFd>,
     /// The master side of the child's pseudo-terminal, for a pty sheep.
     ///
-    /// Always `None` until a pty sheep is carried across the exec.
+    /// Stdout's counterpart: the pump holds the reader and clears this
+    /// when that stream ends. The stdin pump's writer shares the descriptor.
     pub(super) pty: Option<RawFd>,
 }
 

@@ -35,6 +35,7 @@ fn adopt_spec(dir: &tempfile::TempDir, pid: u32, reaper: &Arc<AdoptedReaper>) ->
         stdin_pipe: None,
         channel: None,
         dog_link: None,
+        pty: None,
         dog_topics: None,
         launch_dog: None,
         reaper: Arc::clone(reaper),
@@ -275,4 +276,80 @@ async fn an_adopted_channel_reaches_a_real_child_that_blocks_on_fd_3() {
         Some(0),
         "status 3 is the child's own `read` failing, which is a non-blocking fd 3"
     );
+}
+
+/// A terminal opened the way a pty sheep's is: the master a predecessor
+/// carries, and the slave the child gets for its stdio.
+fn a_terminal() -> (fs::File, fs::File) {
+    use rustix::fs::{Mode, OFlags, open};
+    use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
+
+    let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+    grantpt(&master).unwrap();
+    unlockpt(&master).unwrap();
+    let name = ptsname(&master, Vec::new()).unwrap();
+    let slave = open(
+        name.as_c_str(),
+        OFlags::RDWR | OFlags::NOCTTY,
+        Mode::empty(),
+    )
+    .unwrap();
+    (fs::File::from(master), fs::File::from(slave))
+}
+
+/// fails if an adopted pty sheep's group is not what the stop signals reach.
+///
+/// The child leads its own group on a terminal it did not get from this
+/// image, as a carried sheep does. `kill_tree` must take the lamb with it
+/// and the reaper must still see the sheep die of the signal.
+#[tokio::test]
+#[expect(
+    clippy::zombie_processes,
+    reason = "the reaper collects this status; a Child::wait would take it first"
+)]
+async fn an_adopted_pty_sheep_is_stopped_with_its_group() {
+    use std::os::unix::process::CommandExt as _;
+    use std::process::Stdio;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (master, slave) = a_terminal();
+    let mut command = std::process::Command::new("/bin/sh");
+    command
+        .args(["-c", "/bin/sleep 60 & echo $!; wait"])
+        .stdin(Stdio::from(slave.try_clone().unwrap()))
+        .stdout(Stdio::from(slave.try_clone().unwrap()))
+        .stderr(Stdio::from(slave))
+        .process_group(0);
+    let child = command.spawn().expect("spawn a shell on a terminal");
+    drop(command);
+    let pid = child.id();
+    let guard = Reaper(vec![i32::try_from(pid).unwrap()]);
+
+    let reaper = Arc::new(AdoptedReaper::new());
+    let mut spec = adopt_spec(&dir, pid, &reaper);
+    spec.pty = Some(master);
+    let (mut proc, mut io) = TokioRunner::new()
+        .adopt(spec)
+        .expect("the real runner must be able to adopt a pty sheep");
+
+    let line = recv_log(
+        &mut io,
+        LONG_DEADLINE,
+        "the adopted terminal must report the lamb's pid",
+    )
+    .await;
+    let lamb: i32 = line.line.trim().parse().expect("the line is a pid");
+
+    proc.kill_tree().expect("SIGKILL the adopted sheep's group");
+
+    let outcome = reaped(
+        &mut proc,
+        LONG_DEADLINE,
+        "the adopted pid must be reaped within the budget",
+    )
+    .await;
+    assert_eq!((outcome.code, outcome.signal), (None, Some(9)));
+    assert_reaped(lamb, "the lamb of an adopted pty sheep").await;
+    drop(guard);
+    drop(io);
 }

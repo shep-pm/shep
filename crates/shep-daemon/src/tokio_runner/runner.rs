@@ -438,10 +438,15 @@ impl ProcessRunner for TokioRunner {
             dog_topics,
             launch_dog,
             reaper,
+            pty,
         } = spec;
 
         let (logs_tx, logs_rx) = mpsc::channel(CHANNEL_CAPACITY);
         let (log_ctl_tx, log_ctl_rx) = mpsc::channel(CHANNEL_CAPACITY);
+        let pty_master = pty
+            .map(pty::PtyMaster::from_file)
+            .transpose()
+            .map_err(|error| RunnerError::AdoptFailed(format!("pty master: {error}")))?;
         // Read before the handles move into their pumps: these are the
         // numbers the next handover carries.
         let pipes = PipeFds {
@@ -449,10 +454,17 @@ impl ProcessRunner for TokioRunner {
             err: err_pipe.as_ref().map(AsRawFd::as_raw_fd),
             stdin: stdin_pipe.as_ref().map(AsRawFd::as_raw_fd),
             channel: channel.as_ref().map(AsRawFd::as_raw_fd),
-            pty: None,
+            pty: pty_master.as_ref().map(pty::PtyMaster::raw_fd),
+        };
+        // A terminal is the sheep's whole stdio, so a blob never names it
+        // beside a stdout pipe: the terminal wins if one does.
+        let pty_writer = pty_master.as_ref().map(pty::PtyMaster::writer);
+        let stdout = match pty_master {
+            Some(master) => Some(Stdout::terminal(master)),
+            None => out_pipe.map(Stdout::Carried),
         };
         spawn_log_pump(
-            out_pipe,
+            stdout,
             err_pipe,
             carried_sink(out_file, out_log),
             carried_sink(err_file, err_log),
@@ -493,7 +505,9 @@ impl ProcessRunner for TokioRunner {
             drop(to_child_rx);
         }
         let (to_stdin, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
-        if let Some(stdin_pipe) = stdin_pipe {
+        if let Some(writer) = pty_writer {
+            spawn_stdin_pump(Some(writer), b'\r', to_stdin_rx);
+        } else if let Some(stdin_pipe) = stdin_pipe {
             spawn_stdin_pump(Some(stdin_pipe), b'\n', to_stdin_rx);
         } else {
             drop(to_stdin_rx);
@@ -876,7 +890,7 @@ impl ProcessRunner for TokioRunner {
             // Read further up, before the daemon end moved into its pumps.
             // Nothing on `child` names it: the child's side is fd 3.
             channel: channel_fd,
-            pty: None,
+            pty: pty_master.as_ref().map(pty::PtyMaster::raw_fd),
         };
         #[cfg(not(unix))]
         let pipes = PipeFds;
