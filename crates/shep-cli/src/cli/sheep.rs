@@ -66,13 +66,13 @@ pub struct StartArgs {
     #[arg(num_args = 0..)]
     pub targets: Vec<String>,
     /// Name for this sheep (script form only)
-    #[arg(long)]
+    #[arg(short = 'n', long)]
     pub name: Option<String>,
     /// Fold to place this sheep in
-    #[arg(long)]
+    #[arg(short = 'F', long)]
     pub fold: Option<String>,
     /// Working directory to run in (default: where you ran `shep start`)
-    #[arg(long)]
+    #[arg(short = 'c', long)]
     pub cwd: Option<String>,
     /// Interpreter to run the script with, overriding both shep.toml's
     /// extension mapping and a Flockfile app's own interpreter field.
@@ -165,22 +165,22 @@ pub struct ServeArgs {
     /// Directory to serve
     pub root: PathBuf,
     /// Port to listen on
-    #[arg(long, default_value_t = 8080)]
+    #[arg(short = 'p', long, default_value_t = 8080)]
     pub port: u16,
     /// Address to bind. Loopback unless you say otherwise — a wider bind
     /// publishes every file under the directory to anything that can reach
     /// the port.
-    #[arg(long, default_value = "127.0.0.1")]
+    #[arg(short = 'b', long, default_value = "127.0.0.1")]
     pub bind: IpAddr,
     /// Name for this sheep (default: the directory's own name)
-    #[arg(long)]
+    #[arg(short = 'n', long)]
     pub name: Option<String>,
     /// Fold to place this sheep in
-    #[arg(long)]
+    #[arg(short = 'F', long)]
     pub fold: Option<String>,
     /// Serve index.html for paths that do not exist, for a single-page app.
     /// Only for requests that accept HTML, so a missing script still 404s.
-    #[arg(long)]
+    #[arg(short = 'S', long)]
     pub spa: bool,
     /// List a directory that has no index.html. Off by default: a listing
     /// publishes every filename under it.
@@ -312,10 +312,10 @@ pub struct CopyArgs {
     #[arg(long = "except", value_name = "KEY")]
     pub except: Vec<String>,
     /// Print what would change and write nothing
-    #[arg(long)]
+    #[arg(short = 'd', long)]
     pub dry_run: bool,
     /// Write without asking
-    #[arg(long)]
+    #[arg(short = 'y', long)]
     pub yes: bool,
 }
 

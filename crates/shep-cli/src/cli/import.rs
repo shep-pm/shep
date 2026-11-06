@@ -62,10 +62,10 @@ pub struct ImportPm2Args {
     #[arg(long)]
     pub from: Option<PathBuf>,
     /// Write the Flockfile here instead of `./Flockfile.toml`
-    #[arg(long)]
+    #[arg(short = 'o', long)]
     pub out: Option<PathBuf>,
     /// Print the Flockfile that would be written, and write nothing
-    #[arg(long)]
+    #[arg(short = 'd', long)]
     pub dry_run: bool,
     /// Overwrite an existing Flockfile
     #[arg(long)]
@@ -105,10 +105,10 @@ pub struct ImportEnvArgs {
     /// `environment` field, or `[daemon] environment` when it has none, and
     /// so is never the `all` slot that every environment reads. Naming
     /// `all` here writes that slot, as `shep secret set --env all` does.
-    #[arg(long)]
+    #[arg(short = 'E', long)]
     pub env: Option<String>,
     /// Print what would be written, and write nothing
-    #[arg(long)]
+    #[arg(short = 'd', long)]
     pub dry_run: bool,
     /// Overwrite keys that already hold a different value
     #[arg(long)]

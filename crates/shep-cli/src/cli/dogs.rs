@@ -21,11 +21,11 @@ use std::path::PathBuf;
 pub struct DogsArgs {
     /// List the dogs published in the community index instead of the ones
     /// this shepherd is running. Needs no shepherd.
-    #[arg(long)]
+    #[arg(short = 'A', long)]
     pub available: bool,
     /// Fetch the community index even when the copy cached in the last day
     /// is still fresh.
-    #[arg(long, requires = "available")]
+    #[arg(short = 'r', long, requires = "available")]
     pub refresh: bool,
     /// Narrow the listing to entries whose name, package or description
     /// contains this text, case-insensitively.
@@ -98,7 +98,7 @@ pub struct EnableArgs {
     pub exec: Option<PathBuf>,
     /// Grant a dog everything it declares without asking; a dog's first
     /// enable asks, and with no terminal and no `--yes` refuses
-    #[arg(long)]
+    #[arg(short = 'y', long)]
     pub yes: bool,
 }
 
@@ -124,11 +124,11 @@ pub struct AdoptArgs {
     pub path: PathBuf,
     /// The dog's name, the `[<name>]` config key in `dogs.toml`. Defaults
     /// to the binary's file stem with a leading `shep-` stripped.
-    #[arg(long)]
+    #[arg(short = 'n', long)]
     pub name: Option<String>,
     /// Grant the dog everything it declares without asking. With no
     /// terminal and no `--yes`, adopt refuses rather than granting.
-    #[arg(long)]
+    #[arg(short = 'y', long)]
     pub yes: bool,
 }
 
@@ -143,7 +143,7 @@ pub struct InstallArgs {
     /// Grant the dog everything it declares without asking. With no
     /// terminal and no `--yes`, install fetches the dog and then refuses at
     /// the grant question.
-    #[arg(long)]
+    #[arg(short = 'y', long)]
     pub yes: bool,
     /// Stop after adopting: the dog is installed, recorded and granted, and left
     /// disabled until `shep enable`.
@@ -151,7 +151,7 @@ pub struct InstallArgs {
     pub no_enable: bool,
     /// Fetch the community index even when the copy cached in the last day
     /// is still fresh.
-    #[arg(long)]
+    #[arg(short = 'r', long)]
     pub refresh: bool,
     /// Build the index's version with cargo, even when the index hashes a
     /// prebuilt binary for this target.
@@ -180,7 +180,7 @@ pub struct UpgradeArgs {
     pub dog: Option<String>,
     /// Upgrade every installed dog in turn. A dog adopted from a path has no
     /// receipt and is skipped, with a line saying so.
-    #[arg(long = "dogs", id = "all")]
+    #[arg(short = 'D', long = "dogs", id = "all")]
     pub all: bool,
     /// Switch to this branch, tag or commit of the dog's own repository,
     /// which the index has not reviewed. Needs a dog name.
@@ -200,7 +200,7 @@ pub struct UpgradeArgs {
     pub rollback: bool,
     /// Fetch the community index even when the copy cached in the last day
     /// is still fresh.
-    #[arg(long)]
+    #[arg(short = 'r', long)]
     pub refresh: bool,
     /// Reload the shepherd onto the new shep without asking. Only a bare `shep
     /// upgrade` that upgraded shep has a reload to do.

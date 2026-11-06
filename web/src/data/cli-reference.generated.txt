@@ -209,13 +209,13 @@ Arguments:
           since a name is unique to one sheep.
 
 Options:
-      --name <NAME>
+  -n, --name <NAME>
           Name for this sheep (script form only)
 
-      --fold <FOLD>
+  -F, --fold <FOLD>
           Fold to place this sheep in
 
-      --cwd <CWD>
+  -c, --cwd <CWD>
           Working directory to run in (default: where you ran `shep start`)
 
       --interpreter <INTERPRETER>
@@ -320,13 +320,13 @@ Arguments:
           since a name is unique to one sheep.
 
 Options:
-      --name <NAME>
+  -n, --name <NAME>
           Name for this sheep (script form only)
 
-      --fold <FOLD>
+  -F, --fold <FOLD>
           Fold to place this sheep in
 
-      --cwd <CWD>
+  -c, --cwd <CWD>
           Working directory to run in (default: where you ran `shep start`)
 
       --interpreter <INTERPRETER>
@@ -403,24 +403,24 @@ Arguments:
           Directory to serve
 
 Options:
-      --port <PORT>
+  -p, --port <PORT>
           Port to listen on
           
           [default: 8080]
 
-      --bind <BIND>
+  -b, --bind <BIND>
           Address to bind. Loopback unless you say otherwise — a wider bind publishes every file
           under the directory to anything that can reach the port
           
           [default: 127.0.0.1]
 
-      --name <NAME>
+  -n, --name <NAME>
           Name for this sheep (default: the directory's own name)
 
-      --fold <FOLD>
+  -F, --fold <FOLD>
           Fold to place this sheep in
 
-      --spa
+  -S, --spa
           Serve index.html for paths that do not exist, for a single-page app. Only for requests
           that accept HTML, so a missing script still 404s
 
@@ -690,7 +690,7 @@ dials no other. `--format json` with a hosts list needs `--host`.
 Usage: shep flock [OPTIONS]
 
 Options:
-      --follow
+  -f, --follow
           Keep the listing current: redraw it in place until Ctrl+C
           
           One listing to start, then a fresh one every `--interval` seconds while the shepherd stays
@@ -702,7 +702,7 @@ Options:
           moments after it. Needs a terminal too, and refuses `--format json`, since neither has
           anywhere to put a redraw.
 
-      --interval <SECONDS>
+  -i, --interval <SECONDS>
           Seconds between redraws, with `--follow`
           
           The floor is one second, which is also the default. Below it the listing costs the
@@ -742,11 +742,11 @@ Arguments:
           case-insensitively
 
 Options:
-      --available
+  -A, --available
           List the dogs published in the community index instead of the ones this shepherd is
           running. Needs no shepherd
 
-      --refresh
+  -r, --refresh
           Fetch the community index even when the copy cached in the last day is still fresh
 
   -h, --help
@@ -879,7 +879,7 @@ Arguments:
           config key in `dogs.toml`)
 
 Options:
-      --yes
+  -y, --yes
           Grant a dog everything it declares without asking; a dog's first enable asks, and with no
           terminal and no `--yes` refuses
 
@@ -937,7 +937,7 @@ Arguments:
           under each dog that can be installed
 
 Options:
-      --yes
+  -y, --yes
           Grant the dog everything it declares without asking. With no terminal and no `--yes`,
           install fetches the dog and then refuses at the grant question
 
@@ -945,7 +945,7 @@ Options:
           Stop after adopting: the dog is installed, recorded and granted, and left disabled until
           `shep enable`
 
-      --refresh
+  -r, --refresh
           Fetch the community index even when the copy cached in the last day is still fresh
 
       --cargo
@@ -982,7 +982,7 @@ Arguments:
           of
 
 Options:
-      --dogs
+  -D, --dogs
           Upgrade every installed dog in turn. A dog adopted from a path has no receipt and is
           skipped, with a line saying so
 
@@ -997,7 +997,7 @@ Options:
           Put back the install the last upgrade replaced, and its receipt. The upgrade it undoes
           becomes the one to roll back to
 
-      --refresh
+  -r, --refresh
           Fetch the community index even when the copy cached in the last day is still fresh
 
       --reload
@@ -1040,11 +1040,11 @@ Arguments:
           first hit wins
 
 Options:
-      --name <NAME>
+  -n, --name <NAME>
           The dog's name, the `[<name>]` config key in `dogs.toml`. Defaults to the binary's file
           stem with a leading `shep-` stripped
 
-      --yes
+  -y, --yes
           Grant the dog everything it declares without asking. With no terminal and no `--yes`,
           adopt refuses rather than granting
 
@@ -1220,10 +1220,10 @@ Arguments:
           [default: all]
 
 Options:
-      --no-follow
+  -N, --no-follow
           Print the tail of each sheep's log file and exit, instead of following
 
-      --lines <N>
+  -l, --lines <N>
           How many existing lines of each stream to print before following
           
           A sheep that already crashed has said everything it is going to say, so following alone
@@ -1237,10 +1237,10 @@ Options:
           
           [default: 15]
 
-      --err
+  -e, --err
           Only stderr
 
-      --out
+  -o, --out
           Only stdout
 
   -h, --help
@@ -1296,7 +1296,7 @@ Arguments:
           one.
 
 Options:
-      --read-only
+  -R, --read-only
           Close the dashboard's action gate. Actions are permitted by default.
           
           With the gate open, `x` (stop), `R` (restart) and `L` (reload) each arm a confirm instead
@@ -1327,7 +1327,7 @@ subcommand is: `shep lookout -- web dogs catalogue`.
 Usage: shep lookout catalogue [OPTIONS]
 
 Options:
-      --read-only
+  -R, --read-only
           Close the dashboard's action gate. Actions are permitted by default.
           
           The same gate `shep lookout --read-only` closes and the same one `shep kv set
@@ -1414,7 +1414,7 @@ Same precedent as `shep flush --daemon`, which also works on files rather than t
 Usage: shep barks [OPTIONS]
 
 Options:
-      --tail <TAIL>
+  -t, --tail <TAIL>
           Show only the last N barks
 
   -h, --help
@@ -1501,7 +1501,7 @@ Arguments:
           The key to remove
 
 Options:
-      --all
+  -a, --all
           Remove every key
 
   -h, --help
@@ -1559,10 +1559,10 @@ Arguments:
           The value; required unless --stdin is given
 
 Options:
-      --env <ENV>
+  -E, --env <ENV>
           Which environment; omit for every environment
 
-      --stdin
+  -s, --stdin
           Read the value from stdin; the positional form is visible in `ps` and in shell history
 
   -h, --help
@@ -1579,7 +1579,7 @@ Arguments:
           The key
 
 Options:
-      --env <ENV>
+  -E, --env <ENV>
           Which environment; omit to use `[daemon] environment`'s default, which an app's own
           environment may override
 
@@ -1597,7 +1597,7 @@ Arguments:
           The key
 
 Options:
-      --env <ENV>
+  -E, --env <ENV>
           Which environment; omit for the every-environment slot
 
   -h, --help
@@ -1746,10 +1746,10 @@ Options:
       --except <KEY>
           Leave this key out, named under the path you are copying; repeat it for more than one
 
-      --dry-run
+  -d, --dry-run
           Print what would change and write nothing
 
-      --yes
+  -y, --yes
           Write without asking
 
   -h, --help
@@ -1832,10 +1832,10 @@ Arguments:
           is the string as typed, such as `3s`
 
 Options:
-      --dry-run
+  -d, --dry-run
           Print what would change and write nothing
 
-      --yes
+  -y, --yes
           Write without asking
 
   -h, --help
@@ -1871,10 +1871,10 @@ Arguments:
           `api.dogs.kelpie.git`, or `kelpie.worker.timeout`
 
 Options:
-      --dry-run
+  -d, --dry-run
           Print what would change and write nothing
 
-      --yes
+  -y, --yes
           Write without asking
 
   -h, --help
@@ -1995,7 +1995,7 @@ Arguments:
           Script or Flockfile to run (default: discovered in this directory)
 
 Options:
-      --name <NAME>
+  -n, --name <NAME>
           Name for this sheep (script form only)
 
   -h, --help
@@ -2042,10 +2042,10 @@ Options:
       --from <FROM>
           Read this pm2 dump instead of `~/.pm2/dump.pm2`
 
-      --out <OUT>
+  -o, --out <OUT>
           Write the Flockfile here instead of `./Flockfile.toml`
 
-      --dry-run
+  -d, --dry-run
           Print the Flockfile that would be written, and write nothing
 
       --force
@@ -2096,14 +2096,14 @@ Options:
           
           Same grammar as `--secret`, and the same refusal.
 
-      --env <ENV>
+  -E, --env <ENV>
           Which environment's slot the secrets go in.
           
           The default is the sheep's own environment, which is its `environment` field, or `[daemon]
           environment` when it has none, and so is never the `all` slot that every environment
           reads. Naming `all` here writes that slot, as `shep secret set --env all` does.
 
-      --dry-run
+  -d, --dry-run
           Print what would be written, and write nothing
 
       --force
@@ -2138,7 +2138,7 @@ the commands that hand the flock over.
 Usage: shep startup [OPTIONS]
 
 Options:
-      --user <USER>
+  -u, --user <USER>
           The user the unit runs the shepherd as (default: $SUDO_USER, else the invoking user)
 
       --init <INIT>
@@ -2177,7 +2177,7 @@ that is not there is reported absent rather than failing.
 Usage: shep unstartup [OPTIONS]
 
 Options:
-      --user <USER>
+  -u, --user <USER>
           The user the unit runs the shepherd as (default: $SUDO_USER, else the invoking user)
 
       --init <INIT>
@@ -2237,7 +2237,7 @@ Arguments:
           Defaults to Flockfile.toml in this directory
 
 Options:
-      --all
+  -a, --all
           Show every option the grammar has, not just the common ones
 
       --force

@@ -63,7 +63,7 @@ pub struct KvUnsetArgs {
     #[arg(required_unless_present = "all", conflicts_with = "all")]
     pub key: Option<String>,
     /// Remove every key
-    #[arg(long)]
+    #[arg(short = 'a', long)]
     pub all: bool,
 }
 
