@@ -240,6 +240,72 @@ async fn output_is_written_unchanged_and_the_sheep_exiting_ends_the_session() {
     assert!(String::from_utf8(err).unwrap().contains("the sheep exited"));
 }
 
+fn attached() -> Response {
+    Response::Attached {
+        id: 1,
+        name: "web".to_owned(),
+    }
+}
+
+#[tokio::test]
+async fn a_sheep_that_exits_while_a_key_waits_ends_the_session_as_exited() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, _envelopes) =
+        fake_client_answering_with_events(&control_address(dir.path()), |request| match request {
+            Request::PtyInput { .. } => (
+                Err(RpcError {
+                    code: RpcErrorCode::InvalidConfig,
+                    message: "sheep web has no pty".to_owned(),
+                    daemon_version: None,
+                }),
+                Vec::new(),
+            ),
+            _ => (
+                Ok(attached()),
+                vec![BusEvent::PtyEnd {
+                    name: "web".to_owned(),
+                }],
+            ),
+        })
+        .await;
+
+    let (code, _out, err) = run_keys(&client, &[b"x"]).await;
+
+    assert_eq!(code, ExitCode::Success);
+    let err = String::from_utf8(err).unwrap();
+    assert!(err.contains("the sheep exited"), "{err}");
+    assert!(!err.contains("no pty"), "{err}");
+}
+
+#[tokio::test]
+async fn dropped_events_are_reported_rather_than_skipped() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, _envelopes) = attaching_then(
+        dir.path(),
+        vec![
+            BusEvent::Dropped { count: 7 },
+            pty_out("a"),
+            BusEvent::PtyEnd {
+                name: "web".to_owned(),
+            },
+        ],
+    )
+    .await;
+    let (tty, _keys, _resizes) = tty();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let code = {
+        let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+        tokio::time::timeout(BOUND, session(&client, &mut streams, "web", tty))
+            .await
+            .expect("the sheep's end must end the session")
+    };
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(out, b"a");
+    let err = String::from_utf8(err).unwrap();
+    assert!(err.contains("7 events were dropped"), "{err}");
+}
+
 /// A stdout whose write panics, standing in for any bug in the session.
 struct PanicsOnWrite;
 

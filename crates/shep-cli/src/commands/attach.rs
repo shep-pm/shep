@@ -9,7 +9,8 @@
 
 use std::io;
 
-use shep_client::{Client, EventStream, RequestError};
+use futures_util::FutureExt as _;
+use shep_client::{Client, EventStream, Lagged, RequestError};
 use shep_core::protocol::{BusEvent, Request, Response};
 use tokio::sync::mpsc;
 
@@ -150,6 +151,9 @@ pub(crate) async fn session(
 
 /// Moves the sheep's output to the terminal and the operator's keys and
 /// resizes to the sheep, until one of them ends the session.
+///
+/// A ready event is taken before a key, so a sheep that has just exited is
+/// read as that rather than as a refusal of the next key.
 async fn pump(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -161,26 +165,19 @@ async fn pump(
     let mut typed = keys::Keys::default();
     loop {
         tokio::select! {
-            event = events.next() => match event {
-                Some(Ok(BusEvent::PtyOut { name: from, data })) if from == name => {
-                    let written = streams.out.write_all(data.as_bytes()).and_then(|()| streams.out.flush());
-                    if let Err(err) = written {
-                        return End::Write(err);
-                    }
+            biased;
+            event = events.next() => {
+                if let Err(end) = show(streams, name, event) {
+                    return end;
                 }
-                Some(Ok(BusEvent::PtyEnd { name: from })) if from == name => {
-                    return End::SheepExited;
-                }
-                Some(_) => {}
-                None => return End::Request(RequestError::Closed),
-            },
+            }
             chunk = keys.recv() => {
                 let Some(chunk) = chunk else { return End::Detached };
                 let keys = typed.push(&chunk);
                 if !keys.text.is_empty() {
                     let body = Request::PtyInput { name: name.to_owned(), data: keys.text };
-                    if let Err(err) = client.request(body).await {
-                        return End::Request(err);
+                    if let Err(end) = send(client, streams, name, events, body).await {
+                        return end;
                     }
                 }
                 if keys.detach {
@@ -193,11 +190,82 @@ async fn pump(
                     rows: size.rows,
                     cols: size.cols,
                 };
-                if let Err(err) = client.request(body).await {
-                    return End::Request(err);
+                if let Err(end) = send(client, streams, name, events, body).await {
+                    return end;
                 }
             }
         }
+    }
+}
+
+/// Sends `body` and waits for its reply, showing the sheep's output as it
+/// arrives meanwhile, so a slow round trip cannot overflow the event buffer.
+///
+/// An event that is already waiting when the request fails is shown before
+/// the failure is reported: the request is most likely refused because the
+/// sheep just exited, and the waiting event says so.
+async fn send(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    name: &str,
+    events: &mut EventStream,
+    body: Request,
+) -> Result<(), End> {
+    let reply = client.request(body);
+    tokio::pin!(reply);
+    let outcome = loop {
+        tokio::select! {
+            biased;
+            event = events.next() => show(streams, name, event)?,
+            outcome = &mut reply => break outcome,
+        }
+    };
+    if let Err(err) = outcome {
+        while let Some(event) = events.next().now_or_never() {
+            show(streams, name, event)?;
+        }
+        return Err(End::Request(err));
+    }
+    Ok(())
+}
+
+/// Acts on one item of the event stream.
+///
+/// # Errors
+///
+/// The [`End`] the event means: the sheep's terminal closed, the connection
+/// closed, or the terminal could not be written.
+fn show(
+    streams: &mut Streams<'_>,
+    name: &str,
+    event: Option<Result<BusEvent, Lagged>>,
+) -> Result<(), End> {
+    match event {
+        Some(Ok(BusEvent::PtyOut { name: from, data })) if from == name => streams
+            .out
+            .write_all(data.as_bytes())
+            .and_then(|()| streams.out.flush())
+            .map_err(End::Write),
+        Some(Ok(BusEvent::PtyEnd { name: from })) if from == name => Err(End::SheepExited),
+        Some(Ok(BusEvent::Dropped { count }) | Err(Lagged { count })) => {
+            notice(
+                streams,
+                &format!("{count} events were dropped; the screen may be out of sync, redraw it"),
+            );
+            Ok(())
+        }
+        Some(_) => Ok(()),
+        None => Err(End::Request(RequestError::Closed)),
+    }
+}
+
+/// A line on stderr in the middle of a session, while the terminal is raw.
+fn notice(streams: &mut Streams<'_>, message: &str) {
+    match streams.fmt {
+        Format::Table => {
+            let _ = write!(streams.err, "\r\nshep: {message}\r\n");
+        }
+        Format::Json => streams.aside("attach", message),
     }
 }
 
