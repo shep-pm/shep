@@ -3,6 +3,7 @@
 //! [`open_append`], the low-level open both a fresh spawn and a reopen go
 //! through.
 
+use core::time::Duration;
 use std::collections::HashMap;
 use std::io;
 #[cfg(unix)]
@@ -357,6 +358,20 @@ pub(super) struct LogFiles {
     /// See [`LogFiles::reading`] for why a report parks a pump at all.
     #[cfg(unix)]
     pub(super) parked: bool,
+    /// Whether this pump has spent its live-bus budget and is writing to its
+    /// files only, for the stall that spent it.
+    ///
+    /// Set when a pty pump's [`super::pump::LIVE_WAIT`] runs out and cleared
+    /// once a reader drains `logs`. While it is set a line takes a free slot
+    /// or is skipped at once, and the shepherd warns once for the stall.
+    pub(super) behind: bool,
+    /// How long this pump has been waiting on `logs` since a reader last
+    /// drained it.
+    ///
+    /// [`super::pump::LIVE_WAIT`] bounds a whole stall rather than one line,
+    /// so a reader that frees a slot just in time on every line cannot hold
+    /// the pump at its pace. See [`LogFiles::keeps_reading`].
+    pub(super) live_waited: Duration,
 }
 
 impl LogFiles {
@@ -380,6 +395,24 @@ impl LogFiles {
         #[cfg(not(unix))]
         {
             true
+        }
+    }
+
+    /// Whether this pump has to keep its sheep's stream read while `logs` is
+    /// full, rather than waiting for room on it.
+    ///
+    /// A pty master drops what its slave queued about 0.6s after the last slave
+    /// closes, and this pump is the master's only reader: a pty pump parked on
+    /// a full `logs` channel can outlive its child and never see the child's
+    /// last line. A pipe keeps its bytes until someone reads them.
+    pub(super) fn keeps_reading(&self) -> bool {
+        #[cfg(unix)]
+        {
+            self.pipes.pty.is_some()
+        }
+        #[cfg(not(unix))]
+        {
+            false
         }
     }
 

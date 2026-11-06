@@ -33,6 +33,7 @@ mod handover;
 #[cfg(unix)]
 mod listen_layout;
 mod log_io;
+mod log_paths;
 #[cfg(unix)]
 mod pty;
 mod spawn_io;
@@ -136,7 +137,35 @@ impl PumpHarness {
             PipeFds::default(),
         )
     }
+
+    /// [`PumpHarness::start`] for a pump told its stdout is a pty master.
+    ///
+    /// The bytes still come from an in-memory pair: what a pty pump does
+    /// differently is how long it waits on `logs`, and that needs no terminal.
+    #[cfg(unix)]
+    fn start_as_a_pty_pump() -> Self {
+        let (out_writer, out_reader) = tokio::io::duplex(STREAM_BUFFER);
+        let (err_writer, err_reader) = tokio::io::duplex(STREAM_BUFFER);
+        Self::start_with(
+            out_writer,
+            out_reader,
+            err_writer,
+            err_reader,
+            true,
+            PipeFds {
+                pty: Some(PTY_STAND_IN),
+                ..PipeFds::default()
+            },
+        )
+    }
 }
+
+/// The number [`PumpHarness::start_as_a_pty_pump`] hands the pump.
+///
+/// No case asks this harness for a descriptor report, so the number is only
+/// the claim that the stream is a terminal, and nothing reads it.
+#[cfg(unix)]
+const PTY_STAND_IN: RawFd = 3;
 
 /// A pump reading two real pipes, for the cases that are about
 /// descriptor numbers rather than about bytes.
