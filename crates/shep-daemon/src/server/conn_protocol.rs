@@ -12,8 +12,8 @@ use core::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
 use shep_core::protocol::{
-    BusEvent, Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcError,
-    RpcErrorCode, codec, decode_frame, encode_frame,
+    BusEvent, Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, Reply,
+    Request, RpcError, RpcErrorCode, codec, decode_frame, encode_frame,
 };
 use shep_core::transport::{ServerReadHalf, ServerStream};
 use std::io;
@@ -95,6 +95,7 @@ async fn converse(
     ctx: &RpcContext,
 ) -> Result<(), ConnError> {
     let mut forwarder: Option<JoinHandle<()>> = None;
+    let mut pty: Option<JoinHandle<()>> = None;
     if let Some(topics) = origin.resumed() {
         forwarder = resume(out, peer, origin, ctx, topics).await?;
     } else {
@@ -108,6 +109,7 @@ async fn converse(
         ctx,
         origin,
         &mut forwarder,
+        &mut pty,
         &mut attribution,
     )
     .await;
@@ -115,8 +117,8 @@ async fn converse(
     // aborted rather than dropped: dropping a `JoinHandle` detaches the task,
     // which keeps its clone of `out` alive, which keeps `write_loop` from ever
     // seeing every sender gone and hangs `handle_conn`'s `writer.await`.
-    if let Some(forwarder) = forwarder {
-        forwarder.abort();
+    for task in forwarder.into_iter().chain(pty) {
+        task.abort();
     }
     outcome
 }
@@ -128,12 +130,29 @@ async fn read_loop(
     ctx: &RpcContext,
     origin: &Origin,
     forwarder: &mut Option<JoinHandle<()>>,
+    pty: &mut Option<JoinHandle<()>>,
     attribution: &mut Attribution,
 ) -> Result<(), ConnError> {
     while let Some(frame) = next_frame(frames, origin).await {
         let frame = frame?; // oversize/short frame ends the connection
         let envelope: Envelope = decode_frame(&frame).map_err(ConnError::Decode)?;
         attribution.note(ctx, &envelope.body);
+        // Refused before dispatch, which would resize the first sheep's
+        // terminal for an attach it then turns away.
+        if matches!(envelope.body, Request::Attach { .. })
+            && pty.as_ref().is_some_and(|task| !task.is_finished())
+        {
+            let refusal = Reply {
+                id: envelope.id,
+                result: Err(RpcError {
+                    code: RpcErrorCode::InvalidConfig,
+                    message: "this connection is already attached to a pty".to_owned(),
+                    daemon_version: None,
+                }),
+            };
+            send(out, &refusal).await?;
+            continue;
+        }
         match dispatch(envelope, conn, origin.link(), ctx).await {
             Outcome::Reply(reply) => send(out, &reply).await?,
             Outcome::Subscribe { reply, filter } => {
@@ -151,6 +170,10 @@ async fn read_loop(
                 )) {
                     old.abort();
                 }
+            }
+            Outcome::Attach { reply, output } => {
+                send(out, &reply).await?;
+                *pty = Some(output.forward(out.clone()));
             }
             Outcome::Shutdown(reply) => {
                 send(out, &reply).await?;

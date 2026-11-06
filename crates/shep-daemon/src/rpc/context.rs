@@ -17,6 +17,7 @@ use shep_core::paths::ShepPaths;
 use shep_core::permissions::Grants;
 use shep_core::protocol::Reply;
 
+use super::PtyStream;
 use crate::bus::{Bus, TopicFilter};
 use crate::host::HostState;
 use crate::limits::stats::StatsState;
@@ -314,6 +315,13 @@ pub(crate) enum Outcome {
         reply: Reply,
         /// Compiled topic matcher for [`crate::bus::spawn_forwarder`].
         filter: TopicFilter,
+    },
+    /// Send this reply, then write `output` to the connection until it ends.
+    Attach {
+        /// The `Attached` reply to send first.
+        reply: Reply,
+        /// The sheep's pty output, as events.
+        output: PtyStream,
     },
     /// Send this reply, then trigger daemon shutdown and close.
     Shutdown(Reply),

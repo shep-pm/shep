@@ -34,9 +34,10 @@ fn envelope(id: u64, body: Request) -> Envelope {
 
 fn reply_of(outcome: Outcome) -> Reply {
     match outcome {
-        Outcome::Reply(reply) | Outcome::Subscribe { reply, .. } | Outcome::Shutdown(reply) => {
-            reply
-        }
+        Outcome::Reply(reply)
+        | Outcome::Subscribe { reply, .. }
+        | Outcome::Attach { reply, .. }
+        | Outcome::Shutdown(reply) => reply,
     }
 }
 
@@ -317,6 +318,7 @@ mod env_copy;
 mod lambs_staleness;
 mod log_tail;
 mod misc_verbs;
+mod pty;
 mod push;
 mod reset_field;
 mod sheep_dog_names;

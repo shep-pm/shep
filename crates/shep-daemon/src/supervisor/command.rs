@@ -443,6 +443,35 @@ pub(crate) enum Command {
         /// task of its own (see [`Actor::begin_send_line`]).
         reply: oneshot::Sender<Result<Vec<LineReply>, SupervisorError>>,
     },
+    /// Subscribes to the output of one sheep's pty.
+    PtyAttach {
+        /// The sheep's name.
+        name: String,
+        /// The subscription, or why there is no terminal to attach to.
+        reply: oneshot::Sender<Result<PtyAttached, SupervisorError>>,
+    },
+    /// Types bytes into one sheep's pty, off the actor loop.
+    PtyInput {
+        /// The sheep's name.
+        name: String,
+        /// The bytes, with no terminator added.
+        bytes: Vec<u8>,
+        /// Answers with the instance's id once the bytes have landed, or why
+        /// they did not.
+        reply: oneshot::Sender<Result<u32, SupervisorError>>,
+    },
+    /// Sets the window size of one sheep's pty, off the actor loop.
+    PtyResize {
+        /// The sheep's name.
+        name: String,
+        /// Rows of the new window.
+        rows: u16,
+        /// Columns of the new window.
+        cols: u16,
+        /// Answers with the instance's id once the size is set, or why it
+        /// was not.
+        reply: oneshot::Sender<Result<u32, SupervisorError>>,
+    },
     /// Graceful engine shutdown: kill ladder on every online sheep, then stop.
     Shutdown {
         /// Answers once every online sheep is terminal.

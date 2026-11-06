@@ -2,7 +2,7 @@ use super::fake_process::{FakeIo, FakeProc, ProcState};
 use super::proc_script::ProcScript;
 #[cfg(unix)]
 use super::stand_ins::open_reportable_fds;
-use super::stand_ins::quiet_pty;
+use super::stand_ins::{PtyTap, scripted_pty};
 use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::privilege::Credentials;
 use crate::runner::{LogCtl, Preflight, ProcIo, ProcessRunner, RunnerError, SpawnSpec, StdinWrite};
@@ -85,6 +85,9 @@ struct SpawnedProc {
     /// [`SpawnSpec::pids_max`], read back via
     /// [`ScriptedRunner::spawned_pids_max`].
     pids_max: Option<u32>,
+    /// The test side of this spawn's terminal, for a spawn that asked for one,
+    /// read back via [`ScriptedRunner::pty_input`] and its siblings.
+    pty: Option<Arc<PtyTap>>,
 }
 
 /// The pid [`ScriptedRunner`] gives the first proc it spawns; each later
@@ -451,6 +454,75 @@ impl ScriptedRunner {
             .clone()
     }
 
+    /// The tap on the terminal of the proc spawned at `spawn_index`.
+    ///
+    /// # Panics
+    ///
+    /// If `spawn_index` is out of range or that spawn had no terminal.
+    #[track_caller]
+    fn pty_tap(&self, spawn_index: usize) -> Arc<PtyTap> {
+        self.spawned.lock().unwrap()[spawn_index]
+            .pty
+            .clone()
+            .expect("that spawn asked for no terminal")
+    }
+
+    /// Everything the daemon has typed into the terminal of the proc spawned
+    /// at `spawn_index`, in order.
+    ///
+    /// # Panics
+    ///
+    /// If `spawn_index` is out of range or that spawn had no terminal.
+    #[must_use]
+    #[track_caller]
+    pub fn pty_input(&self, spawn_index: usize) -> Vec<u8> {
+        self.pty_tap(spawn_index).input()
+    }
+
+    /// Every window size the daemon has set on that terminal, as
+    /// `(rows, cols)`, in order.
+    ///
+    /// # Panics
+    ///
+    /// If `spawn_index` is out of range or that spawn had no terminal.
+    #[must_use]
+    #[track_caller]
+    pub fn pty_sizes(&self, spawn_index: usize) -> Vec<(u16, u16)> {
+        self.pty_tap(spawn_index).sizes()
+    }
+
+    /// Has the proc spawned at `spawn_index` write `bytes` to its terminal, as
+    /// one read of the master.
+    ///
+    /// # Panics
+    ///
+    /// If `spawn_index` is out of range or that spawn had no terminal.
+    #[track_caller]
+    pub fn pty_emit(&self, spawn_index: usize, bytes: &[u8]) {
+        self.pty_tap(spawn_index).emit(bytes);
+    }
+
+    /// Closes that terminal, as the child's last descriptor on it closing does.
+    ///
+    /// # Panics
+    ///
+    /// If `spawn_index` is out of range or that spawn had no terminal.
+    #[track_caller]
+    pub fn pty_end(&self, spawn_index: usize) {
+        self.pty_tap(spawn_index).end();
+    }
+
+    /// How many receivers of that terminal's output are still alive.
+    ///
+    /// # Panics
+    ///
+    /// If `spawn_index` is out of range or that spawn had no terminal.
+    #[must_use]
+    #[track_caller]
+    pub fn pty_subscribers(&self, spawn_index: usize) -> usize {
+        self.pty_tap(spawn_index).subscribers()
+    }
+
     /// Takes the [`FakeIo`] test-side handles for the proc spawned at `spawn_index`
     ///
     /// # Panics
@@ -673,6 +745,11 @@ impl ProcessRunner for ScriptedRunner {
             drop(to_stdin_rx);
         }
 
+        let (pty_handle, pty_tap) = match spec.pty.then(scripted_pty) {
+            Some((handle, tap)) => (Some(handle), Some(tap)),
+            None => (None, None),
+        };
+
         let mut spawned = self.spawned.lock().unwrap();
         let index = spawned.len();
         spawned.push(SpawnedProc {
@@ -697,6 +774,7 @@ impl ProcessRunner for ScriptedRunner {
             memory_max: spec.memory_max,
             cpu_quota: spec.cpu_quota,
             pids_max: spec.pids_max,
+            pty: pty_tap,
         });
         drop(spawned);
 
@@ -706,7 +784,7 @@ impl ProcessRunner for ScriptedRunner {
             to_child: to_child_tx,
             log_ctl: log_ctl_tx,
             to_stdin: to_stdin_tx,
-            pty: spec.pty.then(quiet_pty),
+            pty: pty_handle,
         };
         // Arbitrary but deterministic: real pids come from the OS in the real runner.
         let pid = self

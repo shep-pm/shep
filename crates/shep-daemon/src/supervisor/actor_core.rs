@@ -314,6 +314,23 @@ impl<R: ProcessRunner> Actor<R> {
                 self.begin_send_line(&selector, line, reply);
                 false
             }
+            Command::PtyAttach { name, reply } => {
+                self.pty_attach(&name, reply);
+                false
+            }
+            Command::PtyInput { name, bytes, reply } => {
+                self.begin_pty_input(&name, bytes, reply);
+                false
+            }
+            Command::PtyResize {
+                name,
+                rows,
+                cols,
+                reply,
+            } => {
+                self.begin_pty_resize(&name, rows, cols, reply);
+                false
+            }
             Command::Stop { selector, reply } => {
                 self.begin_manual(
                     selector,
