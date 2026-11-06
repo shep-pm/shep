@@ -21,7 +21,7 @@ go for the full argument. The commit that removed them names itself.
 
 - [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (5)
 - [The CLI surface](#the-cli-surface) (8)
-- [Supervision and lifecycle](#supervision-and-lifecycle) (21)
+- [Supervision and lifecycle](#supervision-and-lifecycle) (22)
 - [The log plane](#the-log-plane) (9)
 - [Reload](#reload) (9)
 - [Custom actions and the shepherd channel](#custom-actions-and-the-shepherd-channel) (10)
@@ -374,11 +374,19 @@ The master's output goes through a filter before the log pump sees it. It remove
 
 `Request::Attach` subscribes the connection to one sheep's master and answers `Attached`. The output then arrives as `BusEvent::PtyOut` frames on that connection, and `PtyEnd` when the terminal closes. Keys and sizes go back as `PtyInput` and `PtyResize` requests on the same connection. The shepherd subscribes before it resizes, so the redraw the new size provokes is the first thing heard. A connection attaches once while its stream is open: a second `Attach` is refused before it resizes anything. Closing the connection drops the subscription. `PtyInput` and `PtyResize` answer `Attached` too, since the wire has no bare acknowledgement.
 
-`data` is a JSON string, so a chunk that ends inside a multibyte character holds the partial bytes back until the rest arrives. A byte that starts no character becomes U+FFFD, and so does a tail the terminal closes on. A client that falls behind gets `Dropped` with the count of chunks lost, and the held bytes are discarded.
+`BusEvent::PtyOut.data` is a JSON string, so a chunk that ends inside a multibyte character holds the partial bytes back until the rest arrives. A byte that starts no character becomes U+FFFD, and so does a tail the terminal closes on. A client that falls behind gets `Dropped` with the count of chunks lost, and the held bytes are discarded.
 
 **Why:** #1565. Text rather than base64 or a byte array because every frame on this socket is JSON, a terminal's output is text in the cases that matter, and base64 would make a `bleats`-style debug of the stream unreadable. The cost is the lossy case above: a program that writes binary to its terminal gets U+FFFD where the bytes were. Live only because the shepherd keeps no scrollback and a screen is redrawn on demand: the resize at attach is what makes the program repaint, so a replay buffer would store what the program can already be asked for. A program that does not redraw on `SIGWINCH` shows a blank screen until it next writes.
 
 `verified crates/shep-daemon/src/rpc/pty_stream.rs (PtyStream), crates/shep-daemon/src/rpc/dispatch.rs (Request::Attach), crates/shep-daemon/src/server/conn_protocol.rs (read_loop)`
+
+### A pty input request carries bytes, not text
+
+`Request::PtyInput.data` is a `Vec<u8>`, which serde writes as a JSON array of numbers. `shep attach` sends each raw read of stdin cut only at the detach key: nothing is held back between reads for a multibyte character to complete, and a byte that starts no character reaches the sheep as that byte. The shepherd writes what it is given to the master and adds nothing. One request carries at most `MAX_FRAME_BYTES / 16` bytes, because a byte costs up to four wire bytes as a number and a frame is capped at `MAX_FRAME_BYTES`: a read bigger than the cap goes as several requests, in order.
+
+**Why:** #1600. An X10 mouse report is `ESC [ M` and three bytes, and a coordinate byte is the column plus 32, so a report for any column past 95 is no UTF-8 character: a client reading stdin as text turned each of those into U+FFFD and the sheep's app got characters it could not parse. Binary piped into stdin is the same case. The output direction keeps text for the reasons the entry above records, and is a change of its own. The cost is the wire, where ASCII keystrokes now cost about four times the bytes, which is nothing for keys typed one read at a time, and `Vec<u8>` adds no dependency where `bytes::Bytes` would. The batch is cut at the cap rather than the whole read refused, because a paste that outgrows one frame is still what the operator typed. Protocol 19 is unreleased, so `data` is retyped in place rather than shipped as a new request an older shepherd refuses by name.
+
+`verified crates/shep-core/src/protocol/request/verbs.rs (Request::PtyInput), crates/shep-cli/src/commands/attach/keys.rs (Keys::push), crates/shep-daemon/src/rpc/dispatch.rs (Request::PtyInput)`
 
 ## The log plane
 

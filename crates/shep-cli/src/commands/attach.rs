@@ -7,13 +7,14 @@
 // Only `attach` for unix reaches the session; the rest is unreachable on Windows.
 #![cfg_attr(not(unix), allow(dead_code))]
 
+use std::collections::VecDeque;
 use std::io;
 use std::time::Duration;
 
 use futures_util::FutureExt as _;
 use futures_util::future::LocalBoxFuture;
 use shep_client::{Client, EventStream, Lagged, RequestError};
-use shep_core::protocol::{BusEvent, Request, Response};
+use shep_core::protocol::{BusEvent, MAX_FRAME_BYTES, Request, Response};
 use tokio::sync::mpsc;
 
 use crate::cli::{AttachArgs, Format};
@@ -207,15 +208,25 @@ pub(crate) fn reset_modes(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
-/// How long a detach waits for the text typed before it to reach the sheep.
+/// How long a detach waits for the keys typed before it to reach the sheep.
 const DETACH_FLUSH: Duration = Duration::from_millis(250);
+
+/// The most bytes one `PtyInput` carries.
+///
+/// serde_json writes a byte as at most three digits and a comma, four wire
+/// bytes per input byte, so a batch of `MAX_FRAME_BYTES / 16` costs a quarter
+/// of [`MAX_FRAME_BYTES`] at its widest and leaves the rest of the frame for
+/// the request's own keys. A read bigger than this goes as several requests,
+/// in order.
+const MAX_INPUT_BYTES: usize = MAX_FRAME_BYTES / 16;
 
 /// Moves the sheep's output to the terminal and the operator's keys and
 /// resizes to the sheep, until one of them ends the session.
 ///
 /// One request is in flight at a time, a branch of the same `select!` as the
-/// events and keys, so a slow reply holds up neither. Text typed meanwhile is
-/// queued. No branch is preferred, so output cannot starve the keys.
+/// events and keys, so a slow reply holds up neither. Keys typed meanwhile are
+/// queued and sent in batches of at most [`MAX_INPUT_BYTES`]. No branch is
+/// preferred, so output cannot starve the keys.
 async fn pump<'a>(
     client: &'a Client,
     streams: &mut Streams<'_>,
@@ -224,8 +235,8 @@ async fn pump<'a>(
     mut keys: mpsc::Receiver<Vec<u8>>,
     mut resizes: mpsc::Receiver<Size>,
 ) -> End {
-    let mut typed = keys::Keys::default();
-    let mut queued = String::new();
+    let typed = keys::Keys;
+    let mut queued: VecDeque<u8> = VecDeque::new();
     let mut resize: Option<Size> = None;
     let mut in_flight: Option<LocalBoxFuture<'a, Result<Response, RequestError>>> = None;
     loop {
@@ -254,7 +265,7 @@ async fn pump<'a>(
                     return detach(client, name, in_flight.take(), queued).await;
                 };
                 let typed_now = typed.push(&chunk);
-                queued.push_str(&typed_now.text);
+                queued.extend(typed_now.bytes);
                 if typed_now.detach {
                     return detach(client, name, in_flight.take(), queued).await;
                 }
@@ -282,11 +293,12 @@ async fn pump<'a>(
     }
 }
 
-/// A `PtyInput` of everything queued, which it empties.
-fn input(name: &str, queued: &mut String) -> Request {
+/// A `PtyInput` of the front of `queued`, at most [`MAX_INPUT_BYTES`] of it.
+fn input(name: &str, queued: &mut VecDeque<u8>) -> Request {
+    let len = queued.len().min(MAX_INPUT_BYTES);
     Request::PtyInput {
         name: name.to_owned(),
-        data: std::mem::take(queued),
+        data: queued.drain(..len).collect(),
     }
 }
 
@@ -297,13 +309,13 @@ async fn detach(
     client: &Client,
     name: &str,
     in_flight: Option<LocalBoxFuture<'_, Result<Response, RequestError>>>,
-    mut queued: String,
+    mut queued: VecDeque<u8>,
 ) -> End {
     let flush = async {
         if let Some(request) = in_flight {
             let _ = request.await;
         }
-        if !queued.is_empty() {
+        while !queued.is_empty() {
             let _ = client.request(input(name, &mut queued)).await;
         }
     };

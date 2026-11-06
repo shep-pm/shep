@@ -544,11 +544,7 @@ async fn run(
         // Answered with `Attached`, the one reply that names an instance:
         // the wire has no bare acknowledgement.
         Request::PtyInput { name, data } => {
-            match ctx
-                .supervisor
-                .pty_input(name.clone(), data.into_bytes())
-                .await
-            {
+            match ctx.supervisor.pty_input(name.clone(), data).await {
                 Ok(id) => reply(Ok(Response::Attached { id, name })),
                 Err(err) => reply(Err(rpc_error(&err))),
             }

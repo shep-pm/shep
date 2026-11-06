@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -5,7 +6,9 @@ use std::time::Duration;
 use shep_client::testing::{
     control_address, fake_client_answering_with_events, fake_client_leaving_unanswered,
 };
-use shep_core::protocol::{BusEvent, Envelope, Request, Response, RpcError, RpcErrorCode};
+use shep_core::protocol::{
+    BusEvent, Envelope, MAX_FRAME_BYTES, Request, Response, RpcError, RpcErrorCode, encode_frame,
+};
 use tokio::sync::mpsc;
 
 use super::*;
@@ -46,15 +49,20 @@ fn tty() -> (Tty, mpsc::Sender<Vec<u8>>, mpsc::Sender<Size>) {
     )
 }
 
-/// The text of every `PtyInput` that has reached the shepherd.
-fn typed(envelopes: &mut mpsc::UnboundedReceiver<Envelope>) -> String {
-    let mut text = String::new();
+/// The `data` of every `PtyInput` that has reached the shepherd, in order.
+fn batches(envelopes: &mut mpsc::UnboundedReceiver<Envelope>) -> Vec<Vec<u8>> {
+    let mut batches = Vec::new();
     while let Ok(envelope) = envelopes.try_recv() {
         if let Request::PtyInput { data, .. } = envelope.body {
-            text.push_str(&data);
+            batches.push(data);
         }
     }
-    text
+    batches
+}
+
+/// The bytes of every `PtyInput` that has reached the shepherd.
+fn typed(envelopes: &mut mpsc::UnboundedReceiver<Envelope>) -> Vec<u8> {
+    batches(envelopes).concat()
 }
 
 #[tokio::test]
@@ -78,7 +86,7 @@ async fn keys_are_sent_as_typed() {
     .expect("the session must end once the detach key is read");
 
     assert_eq!(code, ExitCode::Success);
-    assert_eq!(typed(&mut envelopes), "ls\ré");
+    assert_eq!(typed(&mut envelopes), b"ls\r\xc3\xa9");
 }
 
 /// Runs [`session`] to its end with `keys` read first, one chunk each.
@@ -105,13 +113,119 @@ async fn ctrl_right_bracket_detaches_and_is_not_sent() {
     let (code, _out, err) = run_keys(&client, &[b"ab\x1dcd"]).await;
 
     assert_eq!(code, ExitCode::Success);
-    assert_eq!(typed(&mut envelopes), "ab");
+    assert_eq!(typed(&mut envelopes), b"ab");
     assert!(String::from_utf8(err).unwrap().contains("detached"));
 }
 
-/// The input a session read before stdin closed is not lost with it.
+/// An X10 mouse report for a column past 95, whose coordinate bytes are no
+/// character, and a lone byte piped into stdin.
 #[tokio::test]
-async fn text_read_before_stdin_closes_still_reaches_the_sheep() {
+async fn a_byte_that_is_not_utf8_reaches_the_shepherd_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) = accepting(dir.path()).await;
+
+    // `ESC [ M`, button 0x23 (press), column 200 as 0xe8, row 168 as 0xc8,
+    // then 0x9b, which starts nothing.
+    let (code, _out, _err) = run_keys(
+        &client,
+        &[&[0x1b, b'[', b'M', 0x23, 0xe8, 0xc8], &[0x9b, DETACH_KEY]],
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(
+        typed(&mut envelopes),
+        [0x1b, b'[', b'M', 0x23, 0xe8, 0xc8, 0x9b]
+    );
+}
+
+#[tokio::test]
+async fn the_detach_key_cuts_what_is_sent_at_that_byte() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) = accepting(dir.path()).await;
+
+    let (code, _out, _err) =
+        run_keys(&client, &[&[0x1b, b'M', 0xe8, DETACH_KEY, 0x9b, b'x']]).await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(typed(&mut envelopes), [0x1b, b'M', 0xe8]);
+}
+
+/// A read bigger than one `PtyInput` may carry goes as several requests, in
+/// order, rather than one frame the wire refuses.
+///
+/// The detach key waits until every byte has arrived: the detach flush is
+/// bounded by wall-clock time, and a slow runner can spend longer than that
+/// encoding a batch this large.
+#[tokio::test]
+async fn a_paste_over_the_wire_cap_reaches_the_shepherd_in_pieces() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) = accepting(dir.path()).await;
+    let (tty, keys, _resizes) = tty();
+
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+    let paste: Vec<u8> = vec![0xff; MAX_INPUT_BYTES + 4096];
+    let driver = async {
+        keys.send(paste.clone()).await.unwrap();
+        let mut sent: Vec<Vec<u8>> = Vec::new();
+        while sent.iter().map(Vec::len).sum::<usize>() < paste.len() {
+            let envelope = envelopes.recv().await.expect("the shepherd went away");
+            if let Request::PtyInput { data, .. } = envelope.body {
+                sent.push(data);
+            }
+        }
+        keys.send(vec![DETACH_KEY]).await.unwrap();
+        sent
+    };
+    let (code, sent) = tokio::time::timeout(Duration::from_secs(60), async {
+        tokio::join!(session(&client, &mut streams, "web", tty), driver)
+    })
+    .await
+    .expect("the paste must arrive and the session end");
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(
+        sent.iter().map(Vec::len).collect::<Vec<usize>>(),
+        [MAX_INPUT_BYTES, 4096],
+        "no batch may exceed the cap"
+    );
+    let sent = sent.concat();
+    assert_eq!(sent.len(), paste.len());
+    assert!(
+        sent.iter()
+            .zip(paste.iter())
+            .all(|(sent, pasted)| sent == pasted),
+        "the paste arrived out of order or with bytes missing"
+    );
+}
+
+#[test]
+fn a_batch_at_the_cap_encodes_under_the_frame_limit() {
+    // 0xff is the widest a byte goes: three digits and a comma.
+    let mut queued: VecDeque<u8> = vec![0xff_u8; MAX_INPUT_BYTES].into();
+    let Request::PtyInput { name, data } = input("web", &mut queued) else {
+        panic!("`input` builds a `PtyInput`");
+    };
+    assert_eq!(data.len(), MAX_INPUT_BYTES);
+    assert!(queued.is_empty());
+
+    let frame = encode_frame(&Envelope {
+        id: 1,
+        deadline_ms: None,
+        body: Request::PtyInput { name, data },
+    })
+    .unwrap();
+    assert!(
+        frame.len() < MAX_FRAME_BYTES,
+        "the frame is {} bytes",
+        frame.len()
+    );
+}
+
+/// The keys a session read before stdin closed are not lost with it.
+#[tokio::test]
+async fn keys_read_before_stdin_closes_still_reach_the_sheep() {
     let dir = tempfile::tempdir().unwrap();
     let (client, mut envelopes) = accepting(dir.path()).await;
 
@@ -125,7 +239,7 @@ async fn text_read_before_stdin_closes_still_reaches_the_sheep() {
         .expect("a closed stdin must end the session");
 
     assert_eq!(code, ExitCode::Success);
-    assert_eq!(typed(&mut envelopes), "ls\r");
+    assert_eq!(typed(&mut envelopes), b"ls\r");
 }
 
 /// Each mode a sheep can turn on by printing an escape sequence is turned

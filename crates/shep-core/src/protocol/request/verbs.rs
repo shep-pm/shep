@@ -532,16 +532,19 @@ pub enum Request {
         /// Terminal width in character columns.
         cols: u16,
     },
-    /// Write text to one sheep's pty, exactly as given.
+    /// Write bytes to one sheep's pty, exactly as given.
     ///
-    /// Unlike [`Self::SendLine`], no terminator is added. `data` is UTF-8
-    /// text. A sheep without a pty is refused
-    /// ([`RpcErrorCode::InvalidConfig`]) with its name in the message.
+    /// Unlike [`Self::SendLine`], no terminator is added, and unlike
+    /// [`crate::protocol::BusEvent::PtyOut`] nothing is decoded: a byte that
+    /// is no character reaches the sheep as that byte. A sheep without a pty
+    /// is refused ([`RpcErrorCode::InvalidConfig`]) with its name in the
+    /// message.
     PtyInput {
         /// The sheep's name, not a selector.
         name: String,
-        /// The text to write, control characters included.
-        data: String,
+        /// The bytes to write, control characters included. A JSON array of
+        /// numbers on the wire.
+        data: Vec<u8>,
     },
     /// Resize one sheep's pty.
     ///
