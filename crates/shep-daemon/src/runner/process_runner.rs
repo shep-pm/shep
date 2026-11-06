@@ -143,6 +143,12 @@ pub struct AdoptSpec {
     /// a dog whose connection had closed, which falls back to the control
     /// socket.
     pub dog_link: Option<tokio::net::UnixStream>,
+    /// The master of its pseudo-terminal, still the one whose slave is the
+    /// child's stdio.
+    ///
+    /// Goes both ways: the log pump reads it and the stdin pump types into
+    /// it. `None` for a sheep that runs on pipes.
+    pub pty: Option<std::fs::File>,
     /// What `dog_link` had subscribed to, or `None` if its dog had not yet
     /// sent its `Hello`. Read only with `dog_link`.
     pub dog_topics: Option<Vec<String>>,

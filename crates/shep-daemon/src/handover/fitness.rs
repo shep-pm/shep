@@ -195,6 +195,12 @@ mod tests {
     }
 
     #[test]
+    fn a_pty_sheep_is_carried() {
+        let e = entry_fixture(|app| app.pty = true);
+        assert_eq!(fitness(&[plain(&e)]), Fitness::Carryable);
+    }
+
+    #[test]
     fn a_sheep_with_stdin_is_carried() {
         let e = entry_fixture(|app| app.stdin = true);
         assert_eq!(fitness(&[plain(&e)]), Fitness::Carryable);
