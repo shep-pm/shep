@@ -155,6 +155,7 @@ impl PumpHarness<tokio::net::unix::pipe::Sender> {
             err: Some(err_reader.as_raw_fd()),
             stdin: None,
             channel: None,
+            pty: None,
         };
         Self::start_with(out_writer, out_reader, err_writer, err_reader, true, pipes)
     }

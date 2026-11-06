@@ -69,6 +69,7 @@ pub(super) const fn fds_at(base: RawFd) -> CarriedFds {
         stdin: Some(base + 4),
         channel: Some(base + 5),
         dog_link: None,
+        pty: None,
     }
 }
 

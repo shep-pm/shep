@@ -328,6 +328,10 @@ pub(super) struct PipeFds {
     /// which a child that closed its fd 3 produces.
     /// `Actor::handle_handover_snapshot` masks it when the channel is gone.
     pub(super) channel: Option<RawFd>,
+    /// The master side of the child's pseudo-terminal, for a pty sheep.
+    ///
+    /// Always `None` until a pty sheep is carried across the exec.
+    pub(super) pty: Option<RawFd>,
 }
 
 /// See the unix definition above; there is nothing to carry here.
@@ -489,6 +493,7 @@ impl LogFiles {
                     stdin: self.pipes.stdin,
                     channel: self.pipes.channel,
                     dog_link: None,
+                    pty: self.pipes.pty,
                 });
             }
             // No acknowledgement to send, and nothing to undo but the flag:
