@@ -413,6 +413,14 @@ half. Its entry, and every other item this section used to hold, is now in
 
 ## Known debt, recorded rather than built
 
+### `pty = true` on Windows (ConPTY) -- deferred
+
+A `pty = true` sheep runs on a unix pseudo-terminal, and `normalize` refuses
+the key on Windows by name. ConPTY is the Windows counterpart. It would need
+its own master reader and writer behind the same `shep whisper` path, which
+sends a carriage return, and its own answer to how the terminal's output
+reaches the log as plain lines. Nothing in the unix build blocks it.
+
 ### What the reload-readiness fix does NOT cover -- open, 2026-08-28
 
 Three residuals, recorded because each was a deliberate stopping point rather

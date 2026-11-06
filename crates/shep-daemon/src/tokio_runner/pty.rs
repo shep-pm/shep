@@ -7,12 +7,13 @@ use core::task::{Context, Poll, ready};
 use std::io;
 use std::os::fd::OwnedFd;
 use std::process::Stdio;
+use std::sync::Arc;
 
 use rustix::fs::{self, Mode, OFlags};
 use rustix::pty;
 use rustix::termios::{self, Winsize};
 use tokio::io::unix::AsyncFd;
-use tokio::io::{AsyncRead, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::process::{ChildStdout, Command};
 
 use super::ansi::AnsiLines;
@@ -47,8 +48,10 @@ fn open_master() -> io::Result<OwnedFd> {
 }
 
 /// The master end of a sheep's terminal, registered with the reactor.
+///
+/// Shared, so the reader and the [`PtyWriter`] work one descriptor.
 pub(super) struct PtyMaster {
-    fd: AsyncFd<OwnedFd>,
+    fd: Arc<AsyncFd<OwnedFd>>,
 }
 
 /// Opens a pair sized [`PTY_ROWS`] by [`PTY_COLS`]: the master the shepherd
@@ -87,7 +90,7 @@ pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
     // descriptor `register` asks for, so the unsoundness does not apply.
     #[allow(deprecated, reason = "register needs a newer tokio floor")]
     let fd = AsyncFd::new(master)?;
-    Ok((PtyMaster { fd }, slave))
+    Ok((PtyMaster { fd: Arc::new(fd) }, slave))
 }
 
 /// Puts `command`'s child on a new terminal: the slave as its fd 0, 1 and 2
@@ -144,6 +147,67 @@ impl PtyMaster {
     /// The master as an [`AsyncRead`] of what the child wrote.
     pub(super) fn into_reader(self) -> PtyReader {
         PtyReader { master: self }
+    }
+
+    /// An [`AsyncWrite`] of keys to the child, over the same master.
+    pub(super) fn writer(&self) -> PtyWriter {
+        PtyWriter {
+            fd: Arc::clone(&self.fd),
+        }
+    }
+}
+
+/// Most bytes one write to the master may carry: macOS's `MAX_CANON` is 1024
+/// and Linux's line buffer is 4096, and a cooked terminal drops what exceeds
+/// it, so the smaller one less a byte is the bound.
+pub(super) const PTY_WRITE_MAX: usize = 1023;
+
+/// Refuses a write the line discipline would cut short.
+fn within_terminal_buffer(len: usize) -> io::Result<()> {
+    if len > PTY_WRITE_MAX {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("a line of {len} bytes is over the {PTY_WRITE_MAX} a terminal holds"),
+        ));
+    }
+    Ok(())
+}
+
+/// Keys typed to the child's terminal: what its fd 0 reads, after the line
+/// discipline.
+///
+/// The stdin pump hands it one whole line per write, and a line over
+/// [`PTY_WRITE_MAX`] is refused unwritten.
+pub(super) struct PtyWriter {
+    fd: Arc<AsyncFd<OwnedFd>>,
+}
+
+impl AsyncWrite for PtyWriter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = self.get_mut();
+        within_terminal_buffer(buf.len())?;
+        loop {
+            let mut ready = ready!(this.fd.poll_write_ready(cx))?;
+            let wrote =
+                ready.try_io(|fd| rustix::io::write(fd.get_ref(), buf).map_err(io::Error::from));
+            if let Ok(result) = wrote {
+                return Poll::Ready(result);
+            }
+        }
+    }
+
+    /// A write to the master is already with the line discipline.
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    /// The master stays open for the reader, so there is nothing to close.
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -261,5 +325,15 @@ mod tests {
             .expect("`EIO` must end the stream, not fail it");
 
         assert_eq!(seen, SEEN);
+    }
+
+    #[test]
+    fn a_write_is_refused_one_byte_past_what_a_terminal_holds() {
+        assert!(within_terminal_buffer(PTY_WRITE_MAX).is_ok());
+        let refusal = within_terminal_buffer(PTY_WRITE_MAX + 1).unwrap_err();
+        assert_eq!(
+            refusal.to_string(),
+            "a line of 1024 bytes is over the 1023 a terminal holds"
+        );
     }
 }

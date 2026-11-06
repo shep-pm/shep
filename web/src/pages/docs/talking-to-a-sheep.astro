@@ -70,7 +70,7 @@ echoer | got: reload
 
 $ shep whisper worker "hello"
 ID  NAME    OUTCOME   DETAIL
-2   worker  no_stdin  no stdin pipe: set stdin = true`;
+2   worker  no_stdin  no stdin pipe: set stdin = true, or pty = true`;
 ---
 
 <DocsLayout
@@ -94,7 +94,8 @@ ID  NAME    OUTCOME   DETAIL
         unix signal to a sheep's own process, or with <code>--lamb</code> to
         one of its lambs.{" "}
         <code>shep whisper &lt;selector&gt; &lt;line&gt;</code> writes one
-        line to its stdin, for an app that set <code>stdin = true</code>.{" "}
+        line to its stdin, for an app that set <code>stdin = true</code> or{" "}
+        <code>pty = true</code>.{" "}
         <code>shep trigger &lt;selector&gt; &lt;action&gt;</code> sends a
         named action over the shepherd channel and reports what the app
         answered. All three take <code>--host</code> and reach that host's
@@ -298,8 +299,8 @@ ID  NAME    OUTCOME   DETAIL
     >
       <p>
         Writes one line to each matched sheep's stdin. Only reaches an app
-        whose Flockfile sets <code>stdin = true</code>, and nothing else
-        implies it: unlike the shepherd channel, which{" "}
+        whose Flockfile sets <code>stdin = true</code> or{" "}
+        <code>pty = true</code>, and nothing else implies either: unlike the shepherd channel, which{" "}
         <code>wait_ready</code> and <code>shutdown_with_message</code> both
         turn on, nothing inside shep needs a sheep's stdin except this verb.
         One line, and the terminator is shep's to add, so a line containing a
@@ -316,6 +317,12 @@ ID  NAME    OUTCOME   DETAIL
       the field being unset and the sheep not running, because the row is
       read to answer "why did my line not arrive" and both answers are "there
       is no pipe here".
+    </p>
+    <p>
+      A <code>pty = true</code> sheep needs no <code>stdin = true</code>. The
+      line is typed at its terminal, ended with Enter (a carriage return), and
+      the terminal's echo of it shows in <code>shep bleats</code> before the
+      program's reply.
     </p>
     <p>
       <code>not_written</code> carries which of three things happened: the

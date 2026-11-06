@@ -290,7 +290,10 @@ fn describe_line_outcome(outcome: &LineOutcome) -> (&'static str, String) {
     match outcome {
         LineOutcome::Sent => ("sent", String::new()),
         // Names the config field, as `describe_outcome`'s `NoChannel` does.
-        LineOutcome::NoStdin => ("no_stdin", "no stdin pipe: set stdin = true".to_string()),
+        LineOutcome::NoStdin => (
+            "no_stdin",
+            "no stdin pipe: set stdin = true, or pty = true".to_string(),
+        ),
         LineOutcome::NotWritten { reason } => ("not_written", reason.clone()),
         other => ("unknown", format!("{other:?}")),
     }
@@ -632,8 +635,8 @@ mod tests {
         let rows = sample_line_replies().rows();
         let detail = &rows[1][3];
         assert!(
-            detail.contains("stdin = true"),
-            "a no_stdin row must name the field that opens one: {detail}"
+            detail.contains("stdin = true") && detail.contains("pty = true"),
+            "a no_stdin row must name the fields that open one: {detail}"
         );
     }
 

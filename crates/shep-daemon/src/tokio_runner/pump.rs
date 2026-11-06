@@ -370,13 +370,16 @@ pub(super) fn spawn_log_pump<O, E>(
 
 /// Writes lines to one child's stdin, one at a time, acknowledging each.
 ///
-/// Serial on purpose: two concurrent writers to one pipe can interleave
-/// mid-line, and a REPL reading the result would see a command neither caller
-/// sent. A line queued behind one the app is not reading waits, so the caller
-/// bounds its own wait; abandoning a write halfway would leave a partial line.
-/// A request whose caller has stopped listening is dropped, not written.
-pub(super) fn spawn_stdin_pump<W>(stdin: Option<W>, mut rx: mpsc::Receiver<StdinWrite>)
-where
+/// Serial on purpose: two concurrent writers can interleave mid-line. A line
+/// queued behind one the app is not reading waits, so the caller bounds its
+/// own wait. A request whose caller has stopped listening is dropped.
+///
+/// `terminator` ends each line: `b'\n'` for a pipe, `b'\r'` for a terminal.
+pub(super) fn spawn_stdin_pump<W>(
+    stdin: Option<W>,
+    terminator: u8,
+    mut rx: mpsc::Receiver<StdinWrite>,
+) where
     W: AsyncWrite + Unpin + Send + 'static,
 {
     tokio::spawn(async move {
@@ -400,7 +403,7 @@ where
             let mut bytes = line.into_bytes();
             // Exactly one terminator, appended here and nowhere else: the
             // wire carries the line without one (`Request::SendLine::line`).
-            bytes.push(b'\n');
+            bytes.push(terminator);
             let result = match stdin.write_all(&bytes).await {
                 Ok(()) => stdin.flush().await,
                 Err(error) => Err(error),
