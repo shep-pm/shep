@@ -155,8 +155,27 @@ impl PtyMaster {
     }
 }
 
+/// Most bytes one write to the master may carry: macOS's `MAX_CANON` is 1024
+/// and Linux's line buffer is 4096, and a cooked terminal drops what exceeds
+/// it, so the smaller one less a byte is the bound.
+pub(super) const PTY_WRITE_MAX: usize = 1023;
+
+/// Refuses a write the line discipline would cut short.
+fn within_terminal_buffer(len: usize) -> io::Result<()> {
+    if len > PTY_WRITE_MAX {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("a line of {len} bytes is over the {PTY_WRITE_MAX} a terminal holds"),
+        ));
+    }
+    Ok(())
+}
+
 /// Keys typed to the child's terminal: what its fd 0 reads, after the line
 /// discipline.
+///
+/// The stdin pump hands it one whole line per write, and a line over
+/// [`PTY_WRITE_MAX`] is refused unwritten.
 pub(super) struct PtyWriter {
     fd: Arc<AsyncFd<OwnedFd>>,
 }
@@ -168,6 +187,7 @@ impl AsyncWrite for PtyWriter {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
+        within_terminal_buffer(buf.len())?;
         loop {
             let mut ready = ready!(this.fd.poll_write_ready(cx))?;
             let wrote =
@@ -252,5 +272,15 @@ mod tests {
         .expect("end of stream must not be an error");
 
         assert_eq!(seen, b"bye\r\n");
+    }
+
+    #[test]
+    fn a_write_is_refused_one_byte_past_what_a_terminal_holds() {
+        assert!(within_terminal_buffer(PTY_WRITE_MAX).is_ok());
+        let refusal = within_terminal_buffer(PTY_WRITE_MAX + 1).unwrap_err();
+        assert_eq!(
+            refusal.to_string(),
+            "a line of 1024 bytes is over the 1023 a terminal holds"
+        );
     }
 }

@@ -7,7 +7,7 @@ use tokio::time::timeout;
 use super::super::TokioRunner;
 use super::PUMP_DEADLINE;
 use super::stop_signal::is_gone_within_deadline;
-use crate::runner::{ProcIo, ProcessRunner, RunningProcess, SpawnSpec, StdinWrite};
+use crate::runner::{ProcIo, ProcessRunner, RunnerError, RunningProcess, SpawnSpec, StdinWrite};
 use tokio::sync::oneshot;
 
 /// A spec that runs `script` under `/bin/sh` on a terminal.
@@ -116,8 +116,8 @@ async fn kill_tree_reaches_a_lamb_of_a_pty_sheep() {
     );
 }
 
-/// Whispers `line` and waits for the write to be acknowledged.
-async fn whisper(io: &ProcIo, line: &str) {
+/// Whispers `line` and waits for the answer.
+async fn try_whisper(io: &ProcIo, line: &str) -> Result<(), RunnerError> {
     let (done, ack) = oneshot::channel();
     io.to_stdin
         .send(StdinWrite {
@@ -130,7 +130,11 @@ async fn whisper(io: &ProcIo, line: &str) {
         .await
         .expect("the whisper must be acknowledged")
         .expect("the pump must answer rather than drop the acknowledgement")
-        .expect("the write must land");
+}
+
+/// Whispers `line`, which must land.
+async fn whisper(io: &ProcIo, line: &str) {
+    try_whisper(io, line).await.expect("the write must land");
 }
 
 /// The bytes `od` printed, as one space-separated string: its padding differs
@@ -204,4 +208,18 @@ async fn a_piped_sheep_still_gets_a_newline() {
     timeout(PUMP_DEADLINE, proc.wait())
         .await
         .expect("the script must exit once it has its bytes");
+}
+
+#[tokio::test]
+async fn a_line_a_terminal_would_cut_is_refused_rather_than_sent() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut proc, io) = a_sheep_that_stays_up(&dir);
+
+    let answer = try_whisper(&io, &"x".repeat(2000)).await;
+
+    assert!(
+        matches!(&answer, Err(RunnerError::WriteFailed(why)) if why.contains("2001")),
+        "a line over the terminal's buffer must be refused with its size: {answer:?}"
+    );
+    proc.kill_tree().unwrap();
 }
