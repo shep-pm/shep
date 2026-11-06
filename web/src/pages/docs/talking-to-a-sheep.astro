@@ -350,18 +350,19 @@ detached`;
       <p>
         Shows a <code>pty = true</code> sheep's terminal and sends what you
         type, every key as typed, <code>ctrl-C</code> included. It takes one
-        sheep name, not a selector.
+        sheep name.
       </p>
     </VerbSignature>
     <CodeBlock>{attachDemo}</CodeBlock>
     <p>
       <code>ctrl-]</code> detaches and is not sent. The sheep keeps running.
       The last line, <code>detached</code> or <code>the sheep exited</code>,
-      goes to stderr, and both exit 0. The key is fixed. Your terminal is put
-      back on every way out. A sheep without <code>pty = true</code> is
+      goes to stderr, and both exit 0. Your terminal is put back on every way
+      out. A sheep without <code>pty = true</code> is
       refused with the shepherd's message and exit 4. It needs the same
       permission as <code>whisper</code>, takes <code>--host</code> and is
-      not available on Windows.
+      not available on Windows. A typed byte that is not UTF-8 reaches the
+      sheep as <code>U+FFFD</code>.
     </p>
 
     <h2 id="a-named-action">A named action</h2>
