@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Request::PtyInput carries bytes, not text
 - BusEvent::PtyOut carries bytes, not text
+- A pty sheep's output reaches attach as bytes
 
 
 ## [0.24.2] - 2026-11-04

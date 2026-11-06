@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shep whisper types into a pty sheep, and the operator docs say how
 - Common flags take a one-letter short form
 - Shep attach shows a pty sheep's live terminal and sends keys in
+- A sheep config takes a pty key that Windows refuses by name
+- A pty sheep survives a shepherd reload
 
 ### Fixed
 
@@ -32,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Request::PtyInput carries bytes, not text
 - Attach sends a read bigger than one frame as several requests
 - BusEvent::PtyOut carries bytes, not text
+- A pty sheep's output reaches attach as bytes
 
 
 ## [0.24.2] - 2026-11-04

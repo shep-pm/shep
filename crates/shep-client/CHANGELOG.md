@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A client does not send pty to a shepherd older than 19
 - A caller opens the event stream itself and tests get a fake that answers with events
+- Shep attach shows a pty sheep's live terminal and sends keys in
 
 
 ## [0.24.2] - 2026-11-04

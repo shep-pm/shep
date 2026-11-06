@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A pty sheep survives a shepherd reload
 - The runner hands out a handle on a pty sheep's master
 - The shepherd serves an attach to a pty sheep
+- A pty sheep runs on a pseudo-terminal and its output is logged as plain lines
 
 ### Changed
 
@@ -41,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Request::PtyInput carries bytes, not text
 - BusEvent::PtyOut carries bytes, not text
 - A doubled carriage return adds no blank line to a pty sheep's log
+- A pty sheep's output reaches attach as bytes
 
 
 ## [0.24.2] - 2026-11-04
