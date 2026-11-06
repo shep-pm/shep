@@ -153,6 +153,10 @@ async fn the_detach_key_cuts_what_is_sent_at_that_byte() {
 
 /// A read bigger than one `PtyInput` may carry goes as several requests, in
 /// order, rather than one frame the wire refuses.
+///
+/// The detach key waits until every byte has arrived: the detach flush is
+/// bounded by wall-clock time, and a slow runner can spend longer than that
+/// encoding a batch this large.
 #[tokio::test]
 async fn a_paste_over_the_wire_cap_reaches_the_shepherd_in_pieces() {
     let dir = tempfile::tempdir().unwrap();
@@ -164,16 +168,23 @@ async fn a_paste_over_the_wire_cap_reaches_the_shepherd_in_pieces() {
     let paste: Vec<u8> = vec![0xff; MAX_INPUT_BYTES + 4096];
     let driver = async {
         keys.send(paste.clone()).await.unwrap();
+        let mut sent: Vec<Vec<u8>> = Vec::new();
+        while sent.iter().map(Vec::len).sum::<usize>() < paste.len() {
+            let envelope = envelopes.recv().await.expect("the shepherd went away");
+            if let Request::PtyInput { data, .. } = envelope.body {
+                sent.push(data);
+            }
+        }
         keys.send(vec![DETACH_KEY]).await.unwrap();
+        sent
     };
-    let (code, ()) = tokio::time::timeout(BOUND, async {
+    let (code, sent) = tokio::time::timeout(Duration::from_secs(60), async {
         tokio::join!(session(&client, &mut streams, "web", tty), driver)
     })
     .await
-    .expect("the session must end once the detach key is read");
+    .expect("the paste must arrive and the session end");
 
     assert_eq!(code, ExitCode::Success);
-    let sent = batches(&mut envelopes);
     assert_eq!(
         sent.iter().map(Vec::len).collect::<Vec<usize>>(),
         [MAX_INPUT_BYTES, 4096],
