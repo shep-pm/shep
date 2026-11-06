@@ -195,14 +195,15 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "talking-to-a-sheep",
         label: "Talking to a sheep",
-        plain: "signals, stdin and IPC",
+        plain: "signals, stdin, a terminal and IPC",
         summary:
-          "Reaching an app that is already running: a unix signal, a line on its stdin, or a named action over the shepherd channel. None of the three restarts it, though a signal it does not handle can still kill it.",
+          "Reaching an app that is already running: a unix signal, a line on its stdin, its live terminal, or a named action over the shepherd channel. None of the four restarts it, though a signal it does not handle can still kill it.",
         built: true,
         source: [
           "crates/shep-core/src/signals.rs",
           "crates/shep-cli/src/commands/signal.rs",
           "crates/shep-cli/src/commands/whisper.rs",
+          "crates/shep-cli/src/commands/attach.rs",
         ],
         spec: { anchor: "9-cli-surface-sheep-native", label: "§9 CLI surface" },
         api: {

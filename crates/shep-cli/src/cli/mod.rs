@@ -55,7 +55,8 @@ pub(crate) use flock::FOLLOW_INTERVAL_FLOOR_SECONDS;
 pub use logs::DEFAULT_BLEAT_LINES;
 pub use settings::{GetArgs, SetArgs, UnsetArgs};
 pub use sheep::{
-    CopyArgs, SelectorArgs, ServeArgs, SignalArgs, StartArgs, StockArgs, TriggerArgs, WhisperArgs,
+    AttachArgs, CopyArgs, SelectorArgs, ServeArgs, SignalArgs, StartArgs, StockArgs, TriggerArgs,
+    WhisperArgs,
 };
 // `ResetMode` converts to `ResetDepth` through `From`, so nothing outside
 // this crate's tests names it in a build that compiles them out. Same allow

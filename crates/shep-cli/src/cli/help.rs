@@ -34,7 +34,10 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
         "Survive reboots",
         &["save", "muster", "startup", "unstartup"],
     ),
-    ("Talk to a sheep", &["trigger", "signal", "whisper"]),
+    (
+        "Talk to a sheep",
+        &["trigger", "signal", "whisper", "attach"],
+    ),
     (
         "The shepherd",
         &[

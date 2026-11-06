@@ -43,6 +43,7 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
         | Commands::Stock(_)
         | Commands::Signal(_)
         | Commands::Whisper(_)
+        | Commands::Attach(_)
         | Commands::Bleats(_)
         | Commands::Lookout(_) => HostScope::Reaches,
         // The hidden `--exec` spelling is `adopt`, which writes this
@@ -105,8 +106,8 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
 /// [`host_scope`].
 const HOST_VERBS: &[&str] = &[
     "flock", "describe", "fold", "stop", "thatlldo", "restart", "reset", "reload", "delete",
-    "disable", "stock", "trigger", "signal", "whisper", "bleats", "lookout", "enable", "start",
-    "muster",
+    "disable", "stock", "trigger", "signal", "whisper", "attach", "bleats", "lookout", "enable",
+    "start", "muster",
 ];
 
 /// Whether the verb called `name` takes `--host`.
@@ -256,6 +257,7 @@ mod tests {
         &["trigger", "web", "run"],
         &["signal", "web", "TERM"],
         &["whisper", "web", "hi"],
+        &["attach", "web"],
         &["fold", "web"],
         &["bleats", "web"],
         &["lookout"],
@@ -326,6 +328,7 @@ mod tests {
         &["stock", "web", "2"],
         &["signal", "web", "TERM"],
         &["whisper", "web", "hi"],
+        &["attach", "web"],
         &["trigger", "web", "run"],
     ];
 

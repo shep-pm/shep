@@ -6,10 +6,10 @@
  * against target/release/shep on 2026-08-29 - see this page's PR for the
  * transcript.
  *
- * The three verbs the binary's own `--help` groups under "Talk to a sheep":
- * signal, whisper, trigger. `trigger` has a page of its own (the shepherd
- * channel) and is a pointer here; the other two had nothing anywhere on
- * this site before this page.
+ * The verbs the binary's own `--help` groups under "Talk to a sheep":
+ * signal, whisper, attach, trigger. `trigger` has a page of its own (the
+ * shepherd channel) and is a pointer here; the others had nothing anywhere
+ * on this site before this page.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
@@ -71,6 +71,10 @@ echoer | got: reload
 $ shep whisper worker "hello"
 ID  NAME    OUTCOME   DETAIL
 2   worker  no_stdin  no stdin pipe: set stdin = true, or pty = true`;
+
+const attachDemo = `$ shep attach claude
+(the sheep's terminal appears; press ctrl-] to leave)
+detached`;
 ---
 
 <DocsLayout
@@ -85,7 +89,7 @@ ID  NAME    OUTCOME   DETAIL
       being restarted, so it keeps every warm cache, open pool and in-flight
       request it was holding. That is a pattern shep can reach and cannot
       offer on its own: <code>restart</code> and <code>reload</code> both
-      replace the process. This page is the three verbs that don't.
+      replace the process. This page is the verbs that don't.
     </p>
 
     <ShortVersion>
@@ -98,9 +102,11 @@ ID  NAME    OUTCOME   DETAIL
         <code>pty = true</code>.{" "}
         <code>shep trigger &lt;selector&gt; &lt;action&gt;</code> sends a
         named action over the shepherd channel and reports what the app
-        answered. All three take <code>--host</code> and reach that host's
+        answered. All four take <code>--host</code> and reach that host's
         sheep only; <code>signal</code> sends the canonical name, so no local
-        signal number crosses to another OS.
+        signal number crosses to another OS.{" "}
+        <code>shep attach &lt;name&gt;</code> shows a <code>pty = true</code>{" "}
+        sheep's live terminal until you press <code>ctrl-]</code>.
       </p>
     </ShortVersion>
 
@@ -339,11 +345,30 @@ ID  NAME    OUTCOME   DETAIL
       second command rather than a repeat of the first.
     </Callout>
 
+    <h2 id="a-live-terminal">A live terminal</h2>
+    <VerbSignature verb="attach" usage="shep attach <name>">
+      <p>
+        Shows a <code>pty = true</code> sheep's terminal and sends what you
+        type, every key as typed, <code>ctrl-C</code> included. It takes one
+        sheep name, not a selector.
+      </p>
+    </VerbSignature>
+    <CodeBlock>{attachDemo}</CodeBlock>
+    <p>
+      <code>ctrl-]</code> detaches and is not sent. The sheep keeps running.
+      The last line, <code>detached</code> or <code>the sheep exited</code>,
+      goes to stderr, and both exit 0. The key is fixed. Your terminal is put
+      back on every way out. A sheep without <code>pty = true</code> is
+      refused with the shepherd's message and exit 4. It needs the same
+      permission as <code>whisper</code>, takes <code>--host</code> and is
+      not available on Windows.
+    </p>
+
     <h2 id="a-named-action">A named action</h2>
     <p>
-      The third way in is <code>shep trigger</code>, which sends an action
+      The last way in is <code>shep trigger</code>, which sends an action
       name and optional parameters over the sheep's shepherd channel and
-      reports what the app answered. It is the only one of the three where
+      reports what the app answered. It is the only one of the four where
       the app talks back, and it needs the channel open:{" "}
       <code>channel = true</code>, or either of the two fields that imply it.
       It has a page to itself:{" "}

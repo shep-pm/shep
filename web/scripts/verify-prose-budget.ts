@@ -525,7 +525,9 @@ export const BUDGETS: Record<string, number> = {
   // rule, the `not_a_lamb` refusal and the old-shepherd refusal are surface an
   // operator has to be told about.
   // Raised from 1678 for #1562: a pty sheep takes a whisper, and its echo.
-  "talking-to-a-sheep": 1726,
+  // Raised from 1726 for `shep attach` (#1569): the verb, its detach key, its
+  // exit and its refusal are surface an operator has to be told about.
+  "talking-to-a-sheep": 1842,
   // Raised from 1330 on the same day and for the same feature. `host` is a
   // fourth key beside `data`, and its three spellings are three different
   // answers a script has to tell apart: an object, `null`, and no key at
@@ -609,7 +611,8 @@ export const BUDGETS: Record<string, number> = {
   // `describe` showing no secrets over it. Required content for #949.
   // Raised from 420 for the six verbs #951 adds to the list `--host` reaches.
   // Raised from 430 for `lookout` in the list `--host` reaches (#954).
-  cli: 435,
+  // Raised from 435 for `attach` in the list `--host` reaches (#1569).
+  cli: 440,
   // Raised from 300 on #1256 for the Docs link a row of ours carries. Most of
   // what it costs is not prose: the branch that decides whether a row gets a
   // link sits in the page body rather than in frontmatter, and this counter

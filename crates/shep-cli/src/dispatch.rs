@@ -22,6 +22,7 @@ use commands::runtime;
 use commands::schema;
 use commands::secret;
 // aliased: `commands::serve` would collide with the crate-root `serve` module
+use commands::attach;
 #[cfg(windows)]
 use commands::logon_task;
 use commands::serve::serve as serve_command;
@@ -467,6 +468,12 @@ pub(crate) async fn run(
             })
             .await
         }
+        Commands::Attach(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                attach::attach(client, streams, args).await
+            })
+            .await
+        }
         // Falls back to the muster roll rather than refusing: looking at the
         // flock must not be a dead end on a machine that just rebooted.
         Commands::Flock(ref args) => {
@@ -752,6 +759,7 @@ async fn run_on_host(
         Commands::Trigger(args) => trigger::trigger(&client, &mut streams, args).await,
         Commands::Signal(args) => signal::signal(&client, &mut streams, args).await,
         Commands::Whisper(args) => whisper::whisper(&client, &mut streams, args).await,
+        Commands::Attach(args) => attach::attach(&client, &mut streams, args).await,
         other => unreachable!("`host_scope` refused {other:?} before it got here"),
     }
 }

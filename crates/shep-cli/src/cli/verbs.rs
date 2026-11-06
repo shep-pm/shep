@@ -7,11 +7,11 @@
 //! are alias and visibility pins rather than grammar ones.
 
 use super::{
-    AdoptArgs, BarksArgs, BleatsArgs, CompletionArgs, CopyArgs, DaemonArgs, DevArgs, DialStdioArgs,
-    DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, GetArgs, HintsArgs,
-    HostArgs, ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs,
-    SecretArgs, SelectorArgs, ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs,
-    StyleArgs, TriggerArgs, UnsetArgs, UpgradeArgs, WhisperArgs,
+    AdoptArgs, AttachArgs, BarksArgs, BleatsArgs, CompletionArgs, CopyArgs, DaemonArgs, DevArgs,
+    DialStdioArgs, DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs,
+    GetArgs, HintsArgs, HostArgs, ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs,
+    ReopenArgs, RuntimeArgs, SecretArgs, SelectorArgs, ServeArgs, SetArgs, SignalArgs, StartArgs,
+    StartupArgs, StockArgs, StyleArgs, TriggerArgs, UnsetArgs, UpgradeArgs, WhisperArgs,
 };
 
 /// Every verb the binary understands.
@@ -358,6 +358,12 @@ pub enum Commands {
     /// that never reads its stdin is still `sent`.
     #[command(visible_alias = "sendline")]
     Whisper(WhisperArgs),
+    /// Show a pty sheep's live terminal and type into it.
+    ///
+    /// Only a `pty = true` sheep has a terminal; any other is refused. Your
+    /// keys go to the sheep as typed; ctrl-] detaches and is not sent. Shows
+    /// what the sheep draws from now on. Needs the same permission as `whisper`.
+    Attach(AttachArgs),
     /// List one fold.
     Fold(FoldArgs),
     /// Show or follow bleats (log output) for one or more sheep.
