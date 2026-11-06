@@ -36,7 +36,7 @@ go for the full argument. The commit that removed them names itself.
 - [Output and first run](#output-and-first-run) (9)
 - [Config overrides](#config-overrides) (9)
 - [Dog config store](#dog-config-store) (1)
-- [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (6)
+- [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (7)
 - [CI and releases](#ci-and-releases) (3)
 - [Config pane writes](#config-pane-writes) (1)
 - [Boot ordering](#boot-ordering) (8)
@@ -2183,6 +2183,18 @@ The fix is a second rendezvous rather than a wider margin. Each racer sends its 
 Widening `FINAL_DRAIN` and serving `ctl_rx` from inside the drain are both ruled out above: 500ms is a quarter of `REPORT_DEADLINE`, and a `ReportFds` answered mid-drain would name descriptors the pump is about to close. Making the budget a parameter that the test sets generously would pass the case without testing the 100ms production bound, and was not built. The CI leg that failed is assumed to be Linux, from the 64 KiB per pipe in the payload; macOS pipes hold 16 KiB.
 
 `verified crates/shep-daemon/src/tokio_runner/tests/handover.rs (both_pipes_filled_to_capacity_drain_inside_the_budget), crates/shep-daemon/src/tokio_runner/pump.rs (final_drain), .github/workflows/test.yml (the slow job's -E filter)`
+
+### A pty master case read only after its last slave closed, and macOS had dropped the bytes
+
+`a_master_whose_child_exited_reads_as_end_of_file` failed on `test (macos-latest, stable)` and passed on both Linux legs. It wrote `bye\n` to a terminal slave, closed that slave, and only then built the master's reader and read it to the end, asserting `bye\r\n`. It ran 0.6s against its 5s deadline, so the read ended rather than hung.
+
+Measured on macOS 26.2 arm64, reported in #1590: a master whose last slave has closed answers a read with 0, and what that slave queued is gone. A reader already in place holds those bytes for a while. A child's last line read 500ms after the child exited arrived, one read 1s after did not, and nothing read after the child had been reaped. Linux is the other order: it hands back the queued bytes and only then fails the read with `EIO`, which `PtyReader` maps to the end of the stream.
+
+The case was testing that difference and not the reader. It now reads what the slave wrote while a slave is still open, then drops the last one and asserts the stream ends with no error and nothing past it, and Linux's order is pinned as a Linux-only case. `attach` says the master must be read before the child exits.
+
+**Why:** The shepherd registers the master with the reactor in `open`, before the child exists, and `spawn_log_pump` is reading it while the child runs, so a sheep's last line lands inside the window a live reader holds and nothing in the daemon needs to change. The alternative, a slave descriptor the shepherd holds until the master has drained, was rejected: it buys nothing a live reader does not already keep, and it costs the pump its end of stream. A pump holding a slave open reaches no EOF on its own, so `printed_by` in `tokio_runner/tests/pty.rs` would have to wait on the child alongside the log drain, and every pty exit path moves with it. A sleep before the close was rejected along with the case it would have saved: the assertion would rest on a wall clock.
+
+`verified crates/shep-daemon/src/tokio_runner/pty.rs (open, attach, PtyReader, a_master_hands_back_what_its_slave_wrote_and_then_ends, a_linux_master_hands_back_queued_bytes_before_it_ends_with_eio)`
 
 ## CI and releases
 

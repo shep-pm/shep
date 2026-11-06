@@ -96,7 +96,9 @@ pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
 /// The parent's copies of the slave close when `command` drops, so the
 /// caller drops it once the child is spawned, and the master then reads the
 /// end of the stream when the child's last descriptor closes. The child leads
-/// its own process group, so the caller sets no `process_group`.
+/// its own process group, so the caller sets no `process_group`. Start
+/// reading the master before the child exits: macOS drops what the slave
+/// queued once that close leaves nothing reading it (#1590).
 ///
 /// # Errors
 ///
@@ -205,9 +207,10 @@ mod tests {
     /// What a slave wrote reaches its master, and the master then ends the
     /// stream cleanly once the last slave closes.
     ///
-    /// The read finishes while a slave is still open, so the case does not
-    /// depend on whether a master keeps what it has already queued when its
-    /// last slave closes.
+    /// The reader exists before the write and the read finishes while a
+    /// slave is still open: macOS answers a read of a master whose last
+    /// slave closed with 0 and drops what that slave queued (#1590), so a
+    /// case that starts reading after the close tests the platform.
     #[tokio::test]
     async fn a_master_hands_back_what_its_slave_wrote_and_then_ends() {
         let (master, slave) = open().unwrap();
@@ -241,8 +244,9 @@ mod tests {
     /// Linux hands back what a slave queued before its last descriptor
     /// closed, and only then fails the read with `EIO`.
     ///
-    /// Whether macOS keeps those bytes is open (#1590); the case above does
-    /// not depend on the answer.
+    /// That order is Linux's: macOS ends the stream at the close and the
+    /// queued bytes never reach the reader, so this case is gated to Linux
+    /// rather than left to fail there.
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn a_linux_master_hands_back_queued_bytes_before_it_ends_with_eio() {
