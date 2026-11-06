@@ -341,10 +341,10 @@ async fn a_refusal_for_a_sheep_without_pty_exits_non_zero_with_its_message() {
     assert!(String::from_utf8(err).unwrap().contains("web has no pty"));
 }
 
-fn pty_out(data: &str) -> BusEvent {
+fn pty_out(data: &[u8]) -> BusEvent {
     BusEvent::PtyOut {
         name: "web".to_owned(),
-        data: data.to_owned(),
+        data: data.to_vec(),
     }
 }
 
@@ -372,8 +372,8 @@ async fn output_is_written_unchanged_and_the_sheep_exiting_ends_the_session() {
     let (client, _envelopes) = attaching_then(
         dir.path(),
         vec![
-            pty_out("\x1b[2Jhi\r\n"),
-            pty_out("é"),
+            pty_out(b"\x1b[2Jhi\r\n"),
+            pty_out("é".as_bytes()),
             BusEvent::PtyEnd {
                 name: "web".to_owned(),
             },
@@ -393,6 +393,40 @@ async fn output_is_written_unchanged_and_the_sheep_exiting_ends_the_session() {
 
     assert_eq!(code, ExitCode::Success);
     assert_eq!(out, "\x1b[2Jhi\r\né".as_bytes());
+    assert!(String::from_utf8(err).unwrap().contains("the sheep exited"));
+}
+
+/// A sheep printing Latin-1 or binary shows what it printed: the bytes are
+/// written to the terminal as they arrived, and nothing decodes them.
+///
+/// 0x9b starts no character, 0xc0 0xc1 is an overlong pair UTF-8 refuses, and
+/// 0xff is no character at all.
+#[tokio::test]
+async fn output_that_is_not_utf8_reaches_the_terminal_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let written: Vec<u8> = vec![0x9b, 0xc0, 0xc1, b'x', 0xff];
+    let (client, _envelopes) = attaching_then(
+        dir.path(),
+        vec![
+            pty_out(&written),
+            BusEvent::PtyEnd {
+                name: "web".to_owned(),
+            },
+        ],
+    )
+    .await;
+
+    let (tty, _keys, _resizes) = tty();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let code = {
+        let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+        tokio::time::timeout(BOUND, session(&client, &mut streams, "web", tty))
+            .await
+            .expect("the sheep's end must end the session")
+    };
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(out, written);
     assert!(String::from_utf8(err).unwrap().contains("the sheep exited"));
 }
 
@@ -440,7 +474,7 @@ async fn dropped_events_are_reported_rather_than_skipped() {
         dir.path(),
         vec![
             BusEvent::Dropped { count: 7 },
-            pty_out("a"),
+            pty_out(b"a"),
             BusEvent::PtyEnd {
                 name: "web".to_owned(),
             },
@@ -543,7 +577,7 @@ async fn the_terminal_is_restored_after_a_panic() {
     use futures_util::FutureExt as _;
 
     let dir = tempfile::tempdir().unwrap();
-    let (client, _envelopes) = attaching_then(dir.path(), vec![pty_out("boom")]).await;
+    let (client, _envelopes) = attaching_then(dir.path(), vec![pty_out(b"boom")]).await;
     let restored = Arc::new(AtomicUsize::new(0));
     let (mut tty, _keys, _resizes) = tty();
     tty.restore = RestoreGuard::with_action({

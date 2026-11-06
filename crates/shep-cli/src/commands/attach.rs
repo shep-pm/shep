@@ -337,7 +337,7 @@ fn show(
     match event {
         Some(Ok(BusEvent::PtyOut { name: from, data })) if from == name => streams
             .out
-            .write_all(data.as_bytes())
+            .write_all(&data)
             .and_then(|()| streams.out.flush())
             .map_err(End::Write),
         Some(Ok(BusEvent::PtyEnd { name: from })) if from == name => Err(End::SheepExited),

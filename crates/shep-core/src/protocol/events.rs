@@ -160,12 +160,14 @@ pub enum BusEvent {
     },
     /// Output from one sheep's pty, published under `pty.out`.
     ///
-    /// `data` is UTF-8 text, control sequences included.
+    /// `data` is what the master read, byte for byte: nothing is decoded, so
+    /// a byte that is no character reaches the subscriber as that byte.
     PtyOut {
         /// The sheep's name.
         name: String,
-        /// The output.
-        data: String,
+        /// The output bytes, control sequences included. A JSON array of
+        /// numbers on the wire.
+        data: Vec<u8>,
     },
     /// One sheep's pty closed, published under `pty.end`.
     PtyEnd {
@@ -475,9 +477,13 @@ mod tests {
             dog: "jobs".to_string(),
             sheep: "web".to_string(),
         });
+        // A colour sequence, then 0x9b, which starts no character: this row
+        // is what pins that the byte rides as itself.
         events.push(BusEvent::PtyOut {
             name: "web".to_string(),
-            data: "\u{1b}[32mok\u{1b}[0m\r\n".to_string(),
+            data: vec![
+                0x1b, b'[', b'3', b'2', b'o', b'k', 0x1b, b'[', b'0', b'm', b'\r', b'\n', 0x9b,
+            ],
         });
         events.push(BusEvent::PtyEnd {
             name: "web".to_string(),
@@ -727,14 +733,15 @@ mod tests {
 
     #[test]
     fn the_pty_events_have_their_topics() {
+        // `é` as its two bytes, then 0x9b, which starts no character.
         let out = BusEvent::PtyOut {
             name: "web".to_string(),
-            data: "hi\u{e9}".to_string(),
+            data: vec![b'h', b'i', 0xc3, 0xa9, 0x9b],
         };
         assert_eq!(out.topic(), "pty.out");
         assert_eq!(
             serde_json::to_string(&out).unwrap(),
-            r#"{"event":"pty_out","data":{"name":"web","data":"hié"}}"#
+            r#"{"event":"pty_out","data":{"name":"web","data":[104,105,195,169,155]}}"#
         );
         let end = BusEvent::PtyEnd {
             name: "web".to_string(),
