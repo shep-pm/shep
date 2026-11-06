@@ -41,6 +41,7 @@ Talk to a sheep
   trigger            Send a named action to matched sheep
   signal             Send a unix signal to matched sheep
   whisper, sendline  Write one line to matched sheep's stdin
+  attach             Show a pty sheep's live terminal and type into it
 
 The shepherd
   ping               Check whether the shepherd answers
@@ -1185,6 +1186,27 @@ Options:
 
 Examples:
   $ shep whisper repl 'reload config'
+
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
+@@VERB:attach@@
+Show a pty sheep's live terminal and type into it.
+
+Only a `pty = true` sheep has a terminal; any other is refused. Your keys go to the sheep as typed;
+ctrl-] detaches and is not sent. Shows what the sheep draws from now on. Needs the same permission
+as `whisper`.
+
+Usage: shep attach [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>
+          The sheep's name
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  $ shep attach claude
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:fold@@

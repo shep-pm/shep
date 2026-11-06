@@ -290,6 +290,16 @@ pub struct WhisperArgs {
     pub line: String,
 }
 
+/// Arguments to `shep attach`.
+///
+/// One sheep name and not a selector: a terminal shows one sheep, so a
+/// selector matching three would have to guess which to draw.
+#[derive(Debug, clap::Args)]
+pub struct AttachArgs {
+    /// The sheep's name
+    pub name: String,
+}
+
 /// Arguments to `shep copy`.
 ///
 /// Not [`SelectorArgs`]: a copy names two sheep, and each one is an address

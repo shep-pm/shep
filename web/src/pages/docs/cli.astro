@@ -61,7 +61,7 @@ const groups = [
   },
   {
     title: "Talking to a sheep",
-    verbs: ["trigger", "signal", "whisper"],
+    verbs: ["trigger", "signal", "whisper", "attach"],
   },
   {
     title: "Logs and alerts",
@@ -180,7 +180,7 @@ if (
       <code>stop</code>, <code>restart</code>,{" "}
       <code>reset</code>, <code>reload</code>, <code>delete</code>, <code>stock</code>,{" "}
       <code>enable</code>, <code>disable</code>, <code>signal</code>,{" "}
-      <code>whisper</code>, <code>trigger</code>, <code>muster</code> and{" "}
+      <code>whisper</code>, <code>attach</code>, <code>trigger</code>, <code>muster</code> and{" "}
       <a href="/docs/lookout#over-host"><code>lookout</code></a> remotely. A destination is
       anything <code>ssh</code> accepts: <code>amp2</code>,{" "}
       <code>user@amp2</code> or an <code>~/.ssh/config</code> alias.{" "}
@@ -190,7 +190,8 @@ if (
     </Callout>
 
     <Callout variant="note">
-      Windows runs every verb on this page, with two differences.{" "}
+      Windows runs every verb on this page except <code>shep attach</code>,
+      with two differences.{" "}
       <code>shep startup</code> registers a logon task, so the flock returns
       at sign-in rather than boot, and <code>shep stop</code>{" "}
       has no graceful signal to send unless your app reads the shepherd

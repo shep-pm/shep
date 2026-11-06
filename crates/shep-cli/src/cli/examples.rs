@@ -89,6 +89,7 @@ pub(super) const EXAMPLES: &[(&str, &[&str])] = &[
         &["shep signal api SIGHUP", "shep signal 'worker-*' usr1"],
     ),
     ("whisper", &["shep whisper repl 'reload config'"]),
+    ("attach", &["shep attach claude"]),
     ("ping", &["shep ping"]),
     ("kill", &["shep kill"]),
     ("reopen", &["shep reopen", "shep reopen api"]),

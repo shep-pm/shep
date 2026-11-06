@@ -533,7 +533,15 @@ impl Client {
 
     /// A stream of what this connection is already being sent, with no
     /// `Subscribe` to change what that is.
-    pub(crate) async fn events(&self) -> Result<EventStream, RequestError> {
+    ///
+    /// For the events a request opens on its own, such as the `pty.out`
+    /// frames after a `Request::Attach`. Open it before sending that request:
+    /// a receiver sees nothing sent before it existed.
+    ///
+    /// # Errors
+    ///
+    /// [`RequestError::Closed`]: the connection is already gone.
+    pub async fn events(&self) -> Result<EventStream, RequestError> {
         let (reply_to, reply_rx) = oneshot::channel();
         self.send_command(Command::Subscribe { reply_to }).await?;
         let receiver = reply_rx.await.map_err(|_recv_error| RequestError::Closed)?;

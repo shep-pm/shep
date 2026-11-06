@@ -2,7 +2,7 @@ use super::*;
 use crate::{Client, ReconnectingClient};
 use futures_util::StreamExt;
 use shep_core::protocol::{
-    Envelope, HelloAck, Request, Response, RpcError, RpcErrorCode, codec, decode_frame,
+    BusEvent, Envelope, HelloAck, Request, Response, RpcError, RpcErrorCode, codec, decode_frame,
 };
 use std::collections::VecDeque;
 use std::path::Path;
@@ -192,6 +192,57 @@ pub async fn fake_client_answering_refusals(
             match answer {
                 Ok(response) => write_reply(&mut frames, id, response).await,
                 Err(err) => write_err(&mut frames, id, err.code, err.message).await,
+            }
+        }
+    });
+    let client = Client::connect(path).await.unwrap();
+    (client, rx)
+}
+
+/// As [`fake_client_answering_refusals`], but `answer` also names the
+/// events written straight after its reply, for a verb whose request opens
+/// a stream, such as `Request::Attach`.
+///
+/// Reply then events, in that order, as a shepherd sends them.
+pub async fn fake_client_answering_with_events(
+    path: &Path,
+    answer: impl Fn(&Request) -> (Result<Response, RpcError>, Vec<BusEvent>) + Send + 'static,
+) -> (Client, mpsc::UnboundedReceiver<Envelope>) {
+    fake_client_leaving_unanswered(path, move |request| Some(answer(request))).await
+}
+
+/// As [`fake_client_answering_with_events`], but `answer` returns `None` for
+/// a request the shepherd never answers, for a test of a caller whose
+/// request is still waiting.
+///
+/// The envelope is still forwarded onto the returned channel, and later
+/// requests are still read and answered.
+pub async fn fake_client_leaving_unanswered(
+    path: &Path,
+    answer: impl Fn(&Request) -> Option<(Result<Response, RpcError>, Vec<BusEvent>)> + Send + 'static,
+) -> (Client, mpsc::UnboundedReceiver<Envelope>) {
+    let mut listener = bind(path);
+    let (tx, rx) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut frames = accept_handshaked(&mut listener, sample_ack()).await;
+        while let Some(Ok(frame)) = frames.next().await {
+            let Ok(envelope) = decode_frame::<Envelope>(&frame) else {
+                break;
+            };
+            let id = envelope.id;
+            let answered = answer(&envelope.body);
+            if tx.send(envelope).is_err() {
+                break;
+            }
+            let Some((reply, events)) = answered else {
+                continue;
+            };
+            match reply {
+                Ok(response) => write_reply(&mut frames, id, response).await,
+                Err(err) => write_err(&mut frames, id, err.code, err.message).await,
+            }
+            for event in events {
+                write_event(&mut frames, event).await;
             }
         }
     });
