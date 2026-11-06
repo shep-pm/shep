@@ -592,7 +592,12 @@ expression: requests
     "body": {
       "kind": "pty_input",
       "name": "web",
-      "data": "ls\r"
+      "data": [
+        108,
+        115,
+        13,
+        155
+      ]
     }
   },
   {

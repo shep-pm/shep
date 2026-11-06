@@ -625,12 +625,13 @@ fn request_wire_snapshots() {
                 cols: 80,
             },
         ),
-        // `data` is text: a keystroke's control bytes ride as JSON escapes.
+        // `data` is bytes, so a keystroke rides as numbers and a byte that
+        // is no character rides as itself.
         envelope(
             44,
             Request::PtyInput {
                 name: "web".to_string(),
-                data: "ls\r".to_string(),
+                data: vec![b'l', b's', b'\r', 0x9b],
             },
         ),
         envelope(
@@ -818,9 +819,9 @@ fn the_pty_requests_round_trip_under_their_own_tags() {
         (
             Request::PtyInput {
                 name: "web".to_string(),
-                data: "ls\r\u{e9}".to_string(),
+                data: vec![b'l', b's', b'\r', 0xc3, 0xa9, 0x9b],
             },
-            r#"{"kind":"pty_input","name":"web","data":"ls\ré"}"#,
+            r#"{"kind":"pty_input","name":"web","data":[108,115,13,195,169,155]}"#,
         ),
         (
             Request::PtyResize {
@@ -857,7 +858,7 @@ fn an_older_shepherd_decodes_attach_as_unrecognized() {
         },
         Request::PtyInput {
             name: "web".to_string(),
-            data: "x".to_string(),
+            data: vec![b'x'],
         },
         Request::PtyResize {
             name: "web".to_string(),

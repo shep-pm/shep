@@ -46,15 +46,15 @@ fn tty() -> (Tty, mpsc::Sender<Vec<u8>>, mpsc::Sender<Size>) {
     )
 }
 
-/// The text of every `PtyInput` that has reached the shepherd.
-fn typed(envelopes: &mut mpsc::UnboundedReceiver<Envelope>) -> String {
-    let mut text = String::new();
+/// The bytes of every `PtyInput` that has reached the shepherd.
+fn typed(envelopes: &mut mpsc::UnboundedReceiver<Envelope>) -> Vec<u8> {
+    let mut bytes = Vec::new();
     while let Ok(envelope) = envelopes.try_recv() {
         if let Request::PtyInput { data, .. } = envelope.body {
-            text.push_str(&data);
+            bytes.extend_from_slice(&data);
         }
     }
-    text
+    bytes
 }
 
 #[tokio::test]
@@ -78,7 +78,7 @@ async fn keys_are_sent_as_typed() {
     .expect("the session must end once the detach key is read");
 
     assert_eq!(code, ExitCode::Success);
-    assert_eq!(typed(&mut envelopes), "ls\ré");
+    assert_eq!(typed(&mut envelopes), b"ls\r\xc3\xa9");
 }
 
 /// Runs [`session`] to its end with `keys` read first, one chunk each.
@@ -105,8 +105,42 @@ async fn ctrl_right_bracket_detaches_and_is_not_sent() {
     let (code, _out, err) = run_keys(&client, &[b"ab\x1dcd"]).await;
 
     assert_eq!(code, ExitCode::Success);
-    assert_eq!(typed(&mut envelopes), "ab");
+    assert_eq!(typed(&mut envelopes), b"ab");
     assert!(String::from_utf8(err).unwrap().contains("detached"));
+}
+
+/// An X10 mouse report for a column past 95, whose coordinate bytes are no
+/// character, and a lone byte piped into stdin.
+#[tokio::test]
+async fn a_byte_that_is_not_utf8_reaches_the_shepherd_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) = accepting(dir.path()).await;
+
+    // `ESC [ M`, button 0x23 (press), column 200 as 0xe8, row 168 as 0xc8,
+    // then 0x9b, which starts nothing.
+    let (code, _out, _err) = run_keys(
+        &client,
+        &[&[0x1b, b'[', b'M', 0x23, 0xe8, 0xc8], &[0x9b, DETACH_KEY]],
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(
+        typed(&mut envelopes),
+        [0x1b, b'[', b'M', 0x23, 0xe8, 0xc8, 0x9b]
+    );
+}
+
+#[tokio::test]
+async fn the_detach_key_cuts_what_is_sent_at_that_byte() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) = accepting(dir.path()).await;
+
+    let (code, _out, _err) =
+        run_keys(&client, &[&[0x1b, b'M', 0xe8, DETACH_KEY, 0x9b, b'x']]).await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(typed(&mut envelopes), [0x1b, b'M', 0xe8]);
 }
 
 /// The input a session read before stdin closed is not lost with it.
@@ -125,7 +159,7 @@ async fn text_read_before_stdin_closes_still_reaches_the_sheep() {
         .expect("a closed stdin must end the session");
 
     assert_eq!(code, ExitCode::Success);
-    assert_eq!(typed(&mut envelopes), "ls\r");
+    assert_eq!(typed(&mut envelopes), b"ls\r");
 }
 
 /// Each mode a sheep can turn on by printing an escape sequence is turned

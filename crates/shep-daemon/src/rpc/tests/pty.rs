@@ -125,14 +125,14 @@ async fn pty_input_reaches_the_sheep() {
 
     let request = Request::PtyInput {
         name: "web".to_string(),
-        data: "ls\r\u{e9}".to_string(),
+        data: b"ls\r\xc3\xa9".to_vec(),
     };
     let reply = ask(&mut client, 2, request).await;
     assert!(
         matches!(&reply.result, Ok(Response::Attached { name, .. }) if name == "web"),
         "{reply:?}"
     );
-    assert_eq!(h.runner.pty_input(0), "ls\r\u{e9}".as_bytes());
+    assert_eq!(h.runner.pty_input(0), b"ls\r\xc3\xa9");
 
     let resize = Request::PtyResize {
         name: "web".to_string(),
@@ -142,6 +142,34 @@ async fn pty_input_reaches_the_sheep() {
     let reply = ask(&mut client, 3, resize).await;
     assert!(reply.result.is_ok(), "{reply:?}");
     assert_eq!(h.runner.pty_sizes(0), [(40, 100)]);
+}
+
+/// An X10 mouse report for a column past 95, whose coordinate bytes are no
+/// character: the sheep gets the bytes the client read, not what UTF-8 makes
+/// of them.
+#[cfg(unix)]
+#[tokio::test]
+async fn pty_input_carries_bytes_that_are_not_utf8() {
+    let h = harness(vec![ProcScript::never_exits()]);
+    start_pty_web(&h).await;
+    let mut client = client_of(&h).await;
+
+    // `ESC [ M`, button 0x23 (press), column 200 as 0xe8, row 168 as 0xc8.
+    let report: Vec<u8> = vec![0x1b, b'[', b'M', 0x23, 0xe8, 0xc8];
+    let reply = ask(
+        &mut client,
+        2,
+        Request::PtyInput {
+            name: "web".to_string(),
+            data: report.clone(),
+        },
+    )
+    .await;
+    assert!(
+        matches!(&reply.result, Ok(Response::Attached { name, .. }) if name == "web"),
+        "{reply:?}"
+    );
+    assert_eq!(h.runner.pty_input(0), report);
 }
 
 #[tokio::test]
@@ -157,7 +185,7 @@ async fn attaching_a_sheep_without_pty_is_refused_by_name() {
             3,
             Request::PtyInput {
                 name: "web".to_string(),
-                data: "x".to_string(),
+                data: vec![b'x'],
             },
         ),
         (

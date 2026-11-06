@@ -214,7 +214,7 @@ const DETACH_FLUSH: Duration = Duration::from_millis(250);
 /// resizes to the sheep, until one of them ends the session.
 ///
 /// One request is in flight at a time, a branch of the same `select!` as the
-/// events and keys, so a slow reply holds up neither. Text typed meanwhile is
+/// events and keys, so a slow reply holds up neither. Keys typed meanwhile are
 /// queued. No branch is preferred, so output cannot starve the keys.
 async fn pump<'a>(
     client: &'a Client,
@@ -224,8 +224,8 @@ async fn pump<'a>(
     mut keys: mpsc::Receiver<Vec<u8>>,
     mut resizes: mpsc::Receiver<Size>,
 ) -> End {
-    let mut typed = keys::Keys::default();
-    let mut queued = String::new();
+    let typed = keys::Keys;
+    let mut queued: Vec<u8> = Vec::new();
     let mut resize: Option<Size> = None;
     let mut in_flight: Option<LocalBoxFuture<'a, Result<Response, RequestError>>> = None;
     loop {
@@ -254,7 +254,7 @@ async fn pump<'a>(
                     return detach(client, name, in_flight.take(), queued).await;
                 };
                 let typed_now = typed.push(&chunk);
-                queued.push_str(&typed_now.text);
+                queued.extend_from_slice(&typed_now.bytes);
                 if typed_now.detach {
                     return detach(client, name, in_flight.take(), queued).await;
                 }
@@ -283,7 +283,7 @@ async fn pump<'a>(
 }
 
 /// A `PtyInput` of everything queued, which it empties.
-fn input(name: &str, queued: &mut String) -> Request {
+fn input(name: &str, queued: &mut Vec<u8>) -> Request {
     Request::PtyInput {
         name: name.to_owned(),
         data: std::mem::take(queued),
@@ -297,7 +297,7 @@ async fn detach(
     client: &Client,
     name: &str,
     in_flight: Option<LocalBoxFuture<'_, Result<Response, RequestError>>>,
-    mut queued: String,
+    mut queued: Vec<u8>,
 ) -> End {
     let flush = async {
         if let Some(request) = in_flight {

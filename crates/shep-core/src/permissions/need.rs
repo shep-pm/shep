@@ -130,7 +130,7 @@ mod tests {
             },
             Request::PtyInput {
                 name: "web".to_string(),
-                data: "ls\r".to_string(),
+                data: b"ls\r".to_vec(),
             },
             Request::PtyResize {
                 name: "web".to_string(),
