@@ -4,11 +4,14 @@ use super::dog_link::DogLink;
 use super::log_protocol::{ExitOutcome, LogCtl, LogLine};
 use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::privilege::Credentials;
+use bytes::Bytes;
 use core::fmt;
+use core::sync::atomic::{AtomicBool, Ordering};
 use shep_core::signals::OperatorSignal;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use tokio::sync::{mpsc, oneshot};
+use std::sync::{Arc, Weak};
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Typed stop signal
 ///
@@ -71,6 +74,160 @@ pub struct ProcIo {
     ///
     /// Hold it only for as long as the child is alive.
     pub to_stdin: mpsc::Sender<StdinWrite>,
+    /// A hold on the master of this sheep's pseudo-terminal, for a sheep that
+    /// runs on one. `None` for a sheep on pipes.
+    ///
+    /// Like [`Self::to_stdin`], hold it only for as long as the child is
+    /// alive.
+    pub pty: Option<PtyHandle>,
+}
+
+/// What a [`PtyHandle`] asks of the task that owns the master.
+///
+/// One queue for both, and the same task that types a whispered line, so a
+/// raw write and a whisper cannot interleave mid-write.
+#[derive(Debug)]
+#[cfg_attr(
+    windows,
+    allow(dead_code, reason = "only the unix pty pump reads these")
+)]
+pub(crate) enum PtyCommand {
+    /// Type these bytes as they are.
+    Input {
+        /// The bytes, with no terminator added.
+        bytes: Vec<u8>,
+        /// Fires once the bytes have landed, or with why they could not.
+        done: oneshot::Sender<Result<(), PtyError>>,
+    },
+    /// Set the terminal's window size.
+    Resize {
+        /// Rows of the new window.
+        rows: u16,
+        /// Columns of the new window.
+        cols: u16,
+        /// Fires once the size is set, or with why it could not be.
+        done: oneshot::Sender<Result<(), PtyError>>,
+    },
+}
+
+/// Why a [`PtyHandle`] could not act on its terminal.
+///
+/// `#[non_exhaustive]`: an out-of-tree consumer can match this exhaustively,
+/// and a third cause would break them with no version bump.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PtyError {
+    /// The sheep's terminal has closed: the child's last descriptor on it is
+    /// gone, or the task that owned the master has ended.
+    Gone,
+    /// The terminal is open and the OS refused the write or the size
+    /// (carries the OS message).
+    Failed(String),
+}
+
+impl fmt::Display for PtyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Gone => f.write_str("the sheep's terminal has closed"),
+            Self::Failed(msg) => write!(f, "terminal write failed: {msg}"),
+        }
+    }
+}
+
+impl core::error::Error for PtyError {}
+
+/// The master of a pty sheep's terminal: its raw output, and what types into
+/// it.
+///
+/// Cheap to clone. Every clone reaches the one terminal, and every method
+/// fails with [`PtyError::Gone`] once the sheep is gone.
+#[derive(Debug, Clone)]
+pub struct PtyHandle {
+    output: Weak<broadcast::Sender<Bytes>>,
+    control: mpsc::Sender<PtyCommand>,
+    closed: Arc<AtomicBool>,
+}
+
+impl PtyHandle {
+    /// Builds a handle over the runner's end of the three.
+    ///
+    /// `closed` is set by whoever reads the master once the terminal ends.
+    /// The handle holds `output` weakly: the reader owns the sender, so the
+    /// channel closes, and a subscriber's `recv` ends, when the reader does.
+    pub(crate) fn new(
+        output: &Arc<broadcast::Sender<Bytes>>,
+        control: mpsc::Sender<PtyCommand>,
+        closed: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            output: Arc::downgrade(output),
+            control,
+            closed,
+        }
+    }
+
+    /// A receiver of what the child writes to its terminal from now on: the
+    /// raw bytes, escape codes and all, as chunked by the reads.
+    ///
+    /// A new receiver sees no earlier output, and one that falls behind loses
+    /// the oldest chunks, as [`broadcast::Receiver::recv`] says. Once the
+    /// terminal has closed, `recv` fails with `Closed` after the last chunk.
+    #[must_use]
+    pub fn subscribe(&self) -> broadcast::Receiver<Bytes> {
+        match self.output.upgrade() {
+            Some(output) => output.subscribe(),
+            None => broadcast::channel(1).1,
+        }
+    }
+
+    /// Types `bytes` into the terminal as they are.
+    ///
+    /// Whole: no whispered line lands between its first byte and its last.
+    ///
+    /// # Errors
+    ///
+    /// - [`PtyError::Gone`] once the sheep's terminal has closed.
+    /// - [`PtyError::Failed`] if the OS refused the write.
+    pub async fn send(&self, bytes: Vec<u8>) -> Result<(), PtyError> {
+        self.ask(|done| PtyCommand::Input { bytes, done }).await
+    }
+
+    /// Sets the window to `rows` by `cols`. The kernel signals the child's
+    /// foreground group with `SIGWINCH`.
+    ///
+    /// # Errors
+    ///
+    /// - [`PtyError::Gone`] once the sheep's terminal has closed.
+    /// - [`PtyError::Failed`] if the OS refused the size.
+    pub async fn resize(&self, rows: u16, cols: u16) -> Result<(), PtyError> {
+        self.ask(|done| PtyCommand::Resize { rows, cols, done })
+            .await
+    }
+
+    /// Whether the terminal has closed, so every call would fail.
+    ///
+    /// The one question a caller asks of a handle it kept, as
+    /// `Sender::is_closed` is for [`ProcIo::to_stdin`].
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire) || self.control.is_closed()
+    }
+
+    async fn ask(
+        &self,
+        command: impl FnOnce(oneshot::Sender<Result<(), PtyError>>) -> PtyCommand,
+    ) -> Result<(), PtyError> {
+        if self.is_closed() {
+            return Err(PtyError::Gone);
+        }
+        let (done, answer) = oneshot::channel();
+        self.control
+            .send(command(done))
+            .await
+            .map_err(|_| PtyError::Gone)?;
+        // A dropped sender means the owning task ended before it answered.
+        answer.await.map_err(|_| PtyError::Gone)?
+    }
 }
 
 /// One line to write to a sheep's stdin, and where the answer goes.

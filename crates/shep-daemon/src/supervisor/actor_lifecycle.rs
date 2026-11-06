@@ -154,6 +154,7 @@ impl<R: ProcessRunner> Actor<R> {
                 let log_ctl = io.log_ctl.clone();
                 let to_child = io.to_child.clone();
                 let to_stdin = io.to_stdin.clone();
+                let pty = io.pty.clone();
                 let handles = spawn_sheep_task::<R::Proc>(
                     id,
                     proc,
@@ -208,6 +209,7 @@ impl<R: ProcessRunner> Actor<R> {
                 slot.to_child = Some(to_child);
                 slot.signals = Some(handles.signals);
                 slot.to_stdin = Some(to_stdin);
+                slot.pty = pty;
                 // A new process under this id makes any RestartDue timer or
                 // readiness task scheduled earlier stale. An old readiness task
                 // finds its sender gone, rides out its deadline, and its

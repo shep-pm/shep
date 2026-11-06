@@ -355,6 +355,8 @@ impl<R: ProcessRunner> Actor<R> {
         slot.signals = None;
         // Same: the writer task parks on `recv()`. See `SheepSlot::to_stdin`.
         slot.to_stdin = None;
+        // Same: its pump holds the master for as long as a handle is held.
+        slot.pty = None;
         // The one place a process under a registered id stops existing, so a
         // wait cannot survive into a second process's life.
         slot.actions.abandon_all();

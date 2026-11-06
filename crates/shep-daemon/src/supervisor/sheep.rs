@@ -97,6 +97,9 @@ pub(super) async fn run_sheep<P: RunningProcess>(
         // `let`, closing the child's stdin at spawn and giving an opted-in app
         // immediate EOF. `SheepSlot` holds a clone, so nothing in the fast
         // loop would show it.
+        pty: _pty,
+        //   ^ bound for the same reason: the pty pump ends with its last
+        // sender, and the terminal's output stops being read.
     } = io;
     let mut ctl_open = true;
     let mut logs_open = true;

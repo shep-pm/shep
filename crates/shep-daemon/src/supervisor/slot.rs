@@ -45,6 +45,12 @@ pub(super) struct SheepSlot {
     /// No `.await` on this sender may appear on the actor loop: an app that has
     /// stopped reading fd 0 fills its pipe and blocks the writer task.
     pub(super) to_stdin: Option<mpsc::Sender<StdinWrite>>,
+    /// A clone of the [`ProcIo::pty`] the most recent successful spawn handed
+    /// out: a hold on this sheep's terminal. `None` whenever no process is
+    /// running under this id, and for one that runs on pipes.
+    ///
+    /// Cleared with [`Self::to_stdin`], whose pump it shares.
+    pub(super) pty: Option<PtyHandle>,
     /// Which manual command (if any) is waiting on this sheep's next exit,
     /// and who asked for it. Claimed through [`Actor::claim_manual`].
     pub(super) manual: Option<PendingManual>,
@@ -103,6 +109,7 @@ impl SheepSlot {
             to_child: None,
             signals: None,
             to_stdin: None,
+            pty: None,
             manual: None,
             pending_delete: false,
             epoch: 0,
@@ -127,11 +134,12 @@ impl SheepSlot {
         // still crashing with 1 while it is failing to start at all.
         self.entry.last_exit = None;
         self.ctl = None;
-        // `signals` and `to_stdin` go wherever `to_child` goes, for the
+        // `signals`, `to_stdin` and `pty` go wherever `to_child` goes, for the
         // reason on each field.
         self.to_child = None;
         self.signals = None;
         self.to_stdin = None;
+        self.pty = None;
         self.ready_tx = None;
     }
 
@@ -157,5 +165,55 @@ impl SheepSlot {
         self.to_stdin
             .as_ref()
             .filter(|to_stdin| !to_stdin.is_closed())
+    }
+
+    /// This sheep's terminal while it is still open, and `None` when it has
+    /// closed or the sheep has none.
+    ///
+    /// Read off the handle rather than `AppConfig::pty`, as
+    /// [`Self::open_stdin`] is.
+    #[allow(dead_code, reason = "nothing but its test reads a terminal yet")]
+    pub(super) fn open_pty(&self) -> Option<&PtyHandle> {
+        self.pty.as_ref().filter(|pty| !pty.is_closed())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use core::sync::atomic::AtomicBool;
+
+    use tokio::sync::broadcast;
+
+    use crate::runner::PtyCommand;
+    use crate::testing::{app_with, plain_entry};
+
+    fn slot() -> SheepSlot {
+        SheepSlot::new(plain_entry(1, app_with("web", |_| {})))
+    }
+
+    /// A handle, and the receiver whose drop closes it.
+    fn handle() -> (PtyHandle, mpsc::Receiver<PtyCommand>) {
+        let output = Arc::new(broadcast::channel(1).0);
+        let (control, commands) = mpsc::channel(1);
+        let handle = PtyHandle::new(&output, control, Arc::new(AtomicBool::new(false)));
+        (handle, commands)
+    }
+
+    #[test]
+    fn open_pty_answers_as_open_stdin_does() {
+        let mut slot = slot();
+        assert!(slot.open_pty().is_none(), "a slot with no terminal");
+
+        let (handle, commands) = handle();
+        slot.pty = Some(handle);
+        assert!(slot.open_pty().is_some(), "a terminal being served");
+
+        drop(commands);
+        assert!(slot.open_pty().is_none(), "a terminal nothing serves");
+
+        slot.pty = None;
+        assert!(slot.open_pty().is_none(), "a cleared slot");
     }
 }

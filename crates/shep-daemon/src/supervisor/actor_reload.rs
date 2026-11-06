@@ -350,6 +350,7 @@ impl<R: ProcessRunner> Actor<R> {
                 let log_ctl = io.log_ctl.clone();
                 let to_child = io.to_child.clone();
                 let to_stdin = io.to_stdin.clone();
+                let pty = io.pty.clone();
                 let handles = spawn_sheep_task::<R::Proc>(
                     new_id,
                     proc,
@@ -378,6 +379,7 @@ impl<R: ProcessRunner> Actor<R> {
                         to_child: Some(to_child),
                         signals: Some(handles.signals),
                         to_stdin: Some(to_stdin),
+                        pty,
                         ready_tx: Some(ready_tx),
                         ..SheepSlot::new(entry)
                     },

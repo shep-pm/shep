@@ -1,7 +1,9 @@
-//! A sheep's pseudo-terminal: the pair a `pty = true` child runs on, and the
-//! master's reader.
+//! A sheep's pseudo-terminal: the pair a `pty = true` child runs on, the
+//! master's reader, and the task that types into it.
 
+use core::future::poll_fn;
 use core::pin::Pin;
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll, ready};
 
 use std::fs::File;
@@ -10,15 +12,20 @@ use std::os::fd::{AsRawFd as _, OwnedFd, RawFd};
 use std::process::Stdio;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use rustix::fs::{self, Mode, OFlags};
 use rustix::pty;
-use rustix::termios::{self, Winsize};
+use rustix::termios::{self, LocalModes, Winsize};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::unix::pipe::Receiver;
 use tokio::process::{ChildStdout, Command};
+use tokio::sync::{broadcast, mpsc};
 
+use super::CHANNEL_CAPACITY;
 use super::ansi::AnsiLines;
+use super::pump::write_line;
+use crate::runner::{PtyCommand, PtyError, PtyHandle, StdinWrite};
 
 /// Rows of every sheep's window. Fixed: nothing resizes it yet, and a program
 /// that wraps to the window should wrap once, wide enough for a log line.
@@ -49,11 +56,26 @@ fn open_master() -> io::Result<OwnedFd> {
     )?)
 }
 
+/// Sets the window of the terminal `fd` is an end of.
+fn set_window(fd: impl rustix::fd::AsFd, rows: u16, cols: u16) -> io::Result<()> {
+    Ok(termios::tcsetwinsize(
+        fd,
+        Winsize {
+            ws_row: rows,
+            ws_col: cols,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        },
+    )?)
+}
+
 /// The master end of a sheep's terminal, registered with the reactor.
 ///
 /// Shared, so the reader and the [`PtyWriter`] work one descriptor.
 pub(super) struct PtyMaster {
     fd: Arc<AsyncFd<OwnedFd>>,
+    /// Set once the reader has seen the terminal end or been dropped.
+    closed: Arc<AtomicBool>,
 }
 
 impl PtyMaster {
@@ -66,7 +88,10 @@ impl PtyMaster {
         // descriptor `register` asks for, so the unsoundness does not apply.
         #[allow(deprecated, reason = "register needs a newer tokio floor")]
         let fd = AsyncFd::new(master)?;
-        Ok(Self { fd: Arc::new(fd) })
+        Ok(Self {
+            fd: Arc::new(fd),
+            closed: Arc::new(AtomicBool::new(false)),
+        })
     }
 
     /// Takes a master a predecessor image carried across an exec.
@@ -115,15 +140,7 @@ pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
         OFlags::RDWR | OFlags::NOCTTY | OFlags::CLOEXEC,
         Mode::empty(),
     )?;
-    termios::tcsetwinsize(
-        &slave,
-        Winsize {
-            ws_row: PTY_ROWS,
-            ws_col: PTY_COLS,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
-        },
-    )?;
+    set_window(&slave, PTY_ROWS, PTY_COLS)?;
     Ok((PtyMaster::register(master)?, slave))
 }
 
@@ -159,13 +176,6 @@ pub(super) enum Stdout {
     Terminal(AnsiLines<PtyReader>),
 }
 
-impl Stdout {
-    /// The master's output as plain lines.
-    pub(super) fn terminal(master: PtyMaster) -> Self {
-        Self::Terminal(AnsiLines::new(master.into_reader()))
-    }
-}
-
 impl AsyncRead for Stdout {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -181,17 +191,65 @@ impl AsyncRead for Stdout {
 }
 
 impl PtyMaster {
-    /// The master as an [`AsyncRead`] of what the child wrote.
-    pub(super) fn into_reader(self) -> PtyReader {
-        PtyReader { master: self }
+    /// The master as an [`AsyncRead`] of what the child wrote, each chunk
+    /// copied to `tap` first while anyone listens.
+    pub(super) fn into_reader(self, tap: Arc<broadcast::Sender<Bytes>>) -> PtyReader {
+        PtyReader { master: self, tap }
     }
 
     /// An [`AsyncWrite`] of keys to the child, over the same master.
     pub(super) fn writer(&self) -> PtyWriter {
         PtyWriter {
             fd: Arc::clone(&self.fd),
+            pending: 0,
         }
     }
+}
+
+/// Chunks a slow subscriber may fall behind by before it loses the oldest.
+const PTY_TAP_CAPACITY: usize = 64;
+
+/// Puts a master to work: its raw output to a [`PtyHandle`]'s subscribers and
+/// then the log pump, and one task typing into it for `whispers` and the
+/// handle alike.
+///
+/// Returns what the log pump reads, and the handle. Must run inside a tokio
+/// runtime.
+pub(super) fn wire(master: PtyMaster, whispers: mpsc::Receiver<StdinWrite>) -> (Stdout, PtyHandle) {
+    let tap = Arc::new(broadcast::channel(PTY_TAP_CAPACITY).0);
+    let (control, commands) = mpsc::channel(CHANNEL_CAPACITY);
+    let handle = PtyHandle::new(&tap, control, Arc::clone(&master.closed));
+    spawn_pty_pump(master.writer(), whispers, commands);
+    let stdout = Stdout::Terminal(AnsiLines::new(master.into_reader(tap)));
+    (stdout, handle)
+}
+
+/// Types into the master, one request at a time, whichever queue it came on.
+///
+/// One task for both, so a handle's bytes and a whispered line each land
+/// whole. Ends once every sender of both queues has dropped.
+fn spawn_pty_pump(
+    mut writer: PtyWriter,
+    mut whispers: mpsc::Receiver<StdinWrite>,
+    mut commands: mpsc::Receiver<PtyCommand>,
+) {
+    tokio::spawn(async move {
+        let (mut whispers_open, mut commands_open) = (true, true);
+        while whispers_open || commands_open {
+            tokio::select! {
+                // Enter sends a carriage return, which a cooked terminal
+                // turns into the newline the program reads.
+                whisper = whispers.recv(), if whispers_open => match whisper {
+                    Some(request) => write_line(&mut writer, b'\r', request).await,
+                    None => whispers_open = false,
+                },
+                command = commands.recv(), if commands_open => match command {
+                    Some(command) => writer.serve(command).await,
+                    None => commands_open = false,
+                },
+            }
+        }
+    });
 }
 
 /// Most bytes one write to the master may carry: macOS's `MAX_CANON` is 1024
@@ -217,6 +275,101 @@ fn within_terminal_buffer(len: usize) -> io::Result<()> {
 /// [`PTY_WRITE_MAX`] is refused unwritten.
 pub(super) struct PtyWriter {
     fd: Arc<AsyncFd<OwnedFd>>,
+    /// Bytes typed since the last line end, which a cooked terminal still
+    /// holds as one unfinished line.
+    pending: usize,
+}
+
+impl PtyWriter {
+    /// Answers one request of a [`PtyHandle`].
+    async fn serve(&mut self, command: PtyCommand) {
+        match command {
+            PtyCommand::Input { bytes, done } => {
+                if done.is_closed() {
+                    return;
+                }
+                let _ = done.send(self.write_raw(&bytes).await);
+            }
+            PtyCommand::Resize { rows, cols, done } => {
+                let result = set_window(self.fd.get_ref(), rows, cols)
+                    .map_err(|error| PtyError::Failed(error.to_string()));
+                let _ = done.send(result);
+            }
+        }
+    }
+
+    /// Writes `bytes` in pieces a terminal holds, with no terminator.
+    ///
+    /// Refused before any byte is written if a cooked terminal would cut it
+    /// (see [`Self::check_line`]). A raw terminal hands bytes to the child as
+    /// they come, so the pieces go through whatever their length.
+    async fn write_raw(&mut self, bytes: &[u8]) -> Result<(), PtyError> {
+        self.check_line(bytes)
+            .map_err(|error| PtyError::Failed(error.to_string()))?;
+        let mut rest = bytes;
+        while !rest.is_empty() {
+            let piece = &rest[..rest.len().min(PTY_WRITE_MAX)];
+            let wrote = poll_fn(|cx| self.poll_put(cx, piece))
+                .await
+                .map_err(|error| PtyError::Failed(error.to_string()))?;
+            rest = &rest[wrote..];
+        }
+        Ok(())
+    }
+
+    /// Refuses `bytes` if a cooked terminal would drop part of them.
+    ///
+    /// A cooked terminal keeps what is typed in one buffer until a newline
+    /// and drops what goes past it, so the line `bytes` ends, with whatever
+    /// earlier writes left unterminated in `pending`, must fit
+    /// [`PTY_WRITE_MAX`], and so must each later line in `bytes`. A raw
+    /// terminal keeps no line, so there is nothing to count.
+    fn check_line(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let cooked = termios::tcgetattr(self.fd.get_ref())?
+            .local_modes
+            .contains(LocalModes::ICANON);
+        if !cooked {
+            self.pending = 0;
+            return Ok(());
+        }
+        let longest = bytes
+            .split_inclusive(|byte| ends_line(*byte))
+            .enumerate()
+            .map(|(index, line)| line.len() + if index == 0 { self.pending } else { 0 })
+            .max()
+            .unwrap_or(0);
+        within_terminal_buffer(longest)
+    }
+
+    /// One write to the master, with no check, noting what it leaves
+    /// unterminated.
+    fn poll_put(&mut self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        loop {
+            let mut ready = ready!(self.fd.poll_write_ready(cx))?;
+            let wrote =
+                ready.try_io(|fd| rustix::io::write(fd.get_ref(), buf).map_err(io::Error::from));
+            if let Ok(result) = wrote {
+                if let Ok(count) = result {
+                    self.note_typed(&buf[..count]);
+                }
+                return Poll::Ready(result);
+            }
+        }
+    }
+
+    /// Tracks the bytes a cooked terminal now holds as an unfinished line.
+    fn note_typed(&mut self, typed: &[u8]) {
+        self.pending = match typed.iter().rposition(|byte| ends_line(*byte)) {
+            Some(end) => typed.len() - end - 1,
+            None => self.pending + typed.len(),
+        };
+    }
+}
+
+/// Whether a cooked terminal reads `byte` as the end of a line: `\r` too, as
+/// the default input flags turn it into `\n`.
+fn ends_line(byte: u8) -> bool {
+    matches!(byte, b'\n' | b'\r')
 }
 
 impl AsyncWrite for PtyWriter {
@@ -227,14 +380,8 @@ impl AsyncWrite for PtyWriter {
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
         within_terminal_buffer(buf.len())?;
-        loop {
-            let mut ready = ready!(this.fd.poll_write_ready(cx))?;
-            let wrote =
-                ready.try_io(|fd| rustix::io::write(fd.get_ref(), buf).map_err(io::Error::from));
-            if let Ok(result) = wrote {
-                return Poll::Ready(result);
-            }
-        }
+        this.check_line(buf)?;
+        this.poll_put(cx, buf)
     }
 
     /// A write to the master is already with the line discipline.
@@ -252,6 +399,24 @@ impl AsyncWrite for PtyWriter {
 /// last slave descriptor closes.
 pub(super) struct PtyReader {
     master: PtyMaster,
+    /// The only strong owner of the sender, so a handle's subscribers see the
+    /// stream end when this drops.
+    tap: Arc<broadcast::Sender<Bytes>>,
+}
+
+impl PtyReader {
+    /// Copies what a read just brought in to the tap, if anyone listens.
+    fn tee(&self, fresh: &[u8]) {
+        if self.tap.receiver_count() > 0 {
+            let _ = self.tap.send(Bytes::copy_from_slice(fresh));
+        }
+    }
+}
+
+impl Drop for PtyReader {
+    fn drop(&mut self) {
+        self.master.closed.store(true, Ordering::Release);
+    }
 }
 
 impl AsyncRead for PtyReader {
@@ -264,6 +429,7 @@ impl AsyncRead for PtyReader {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let this = self.get_mut();
+        let before = buf.filled().len();
         loop {
             let mut ready = ready!(this.master.fd.poll_read_ready(cx))?;
             let read = ready.try_io(|fd| {
@@ -272,11 +438,17 @@ impl AsyncRead for PtyReader {
             match read {
                 Ok(Ok(count)) => {
                     buf.advance(count);
+                    if count == 0 {
+                        this.master.closed.store(true, Ordering::Release);
+                    } else {
+                        this.tee(&buf.filled()[before..]);
+                    }
                     return Poll::Ready(Ok(()));
                 }
                 Ok(Err(error))
                     if error.raw_os_error() == Some(rustix::io::Errno::IO.raw_os_error()) =>
                 {
+                    this.master.closed.store(true, Ordering::Release);
                     return Poll::Ready(Ok(()));
                 }
                 Ok(Err(error)) => return Poll::Ready(Err(error)),
@@ -315,7 +487,7 @@ mod tests {
     #[tokio::test]
     async fn a_master_hands_back_what_its_slave_wrote_and_then_ends() {
         let (master, slave) = open().unwrap();
-        let mut reader = master.into_reader();
+        let mut reader = master.into_reader(Arc::new(broadcast::channel(1).0));
         rustix::io::write(&slave, WRITTEN).unwrap();
 
         let mut buf = [0u8; 64];
@@ -356,10 +528,15 @@ mod tests {
         drop(slave);
 
         let mut seen = Vec::new();
-        timeout(MASTER_DEADLINE, master.into_reader().read_to_end(&mut seen))
-            .await
-            .expect("the reader never saw the end of the stream")
-            .expect("`EIO` must end the stream, not fail it");
+        timeout(
+            MASTER_DEADLINE,
+            master
+                .into_reader(Arc::new(broadcast::channel(1).0))
+                .read_to_end(&mut seen),
+        )
+        .await
+        .expect("the reader never saw the end of the stream")
+        .expect("`EIO` must end the stream, not fail it");
 
         assert_eq!(seen, SEEN);
     }
