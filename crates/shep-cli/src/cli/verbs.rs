@@ -346,20 +346,16 @@ pub enum Commands {
     /// Write one line to matched sheep's stdin.
     ///
     /// Only reaches an app whose Flockfile sets `stdin = true` or `pty = true`.
-    /// Nothing else implies either — unlike the shepherd channel, which
-    /// `wait_ready` and `shutdown_with_message` both turn on — because nothing
-    /// in shep needs a sheep's stdin except this verb. A sheep with neither
-    /// answers a `no_stdin` row naming the fields.
-    ///
-    /// A `pty = true` sheep takes the line as keys typed at its terminal,
-    /// ended by Enter, so the terminal echoes the line into its bleats.
+    /// A sheep with neither answers a `no_stdin` row naming the fields. A pty
+    /// sheep gets the line as typed keys, so its terminal echoes it into its
+    /// bleats.
     ///
     /// One line, and the terminator is shep's to add: a line containing a
     /// newline or a carriage return is a usage error rather than two commands.
     ///
-    /// `sent` means the bytes were written and flushed to the pipe or terminal, not that
-    /// the app read them. A pipe holds 64 KiB before it blocks, so a short line
-    /// to an app that never reads its stdin is still `sent`.
+    /// `sent` means the bytes were written and flushed, not that the app read
+    /// them. A pipe holds 64 KiB before it blocks, so a short line to an app
+    /// that never reads its stdin is still `sent`.
     #[command(visible_alias = "sendline")]
     Whisper(WhisperArgs),
     /// List one fold.
