@@ -739,10 +739,15 @@ async fn dropping_the_control_sender_ends_the_pump() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_pty_pump_does_not_pay_a_wait_per_line_to_a_reader_that_keeps_just_up() {
-    const LINES: usize = CHANNEL_CAPACITY + 12;
-    /// Under [`LIVE_WAIT`], so a pump that pays one wait per line finds a
-    /// slot for every one of them.
-    const READER_GAP: Duration = Duration::from_millis(40);
+    const LINES: usize = CHANNEL_CAPACITY + 50;
+    /// Just under [`LIVE_WAIT`], so a pump that pays a fresh wait per line
+    /// finds a slot for every one of them and never skips a live copy.
+    const READER_GAP: Duration = Duration::from_millis(90);
+    /// A pump held at `READER_GAP` per line reaches its stream's EOF only
+    /// after forwarding all `LINES`, which is 7.4s. A pump that gives up on
+    /// live copies reads the whole stream in a fraction of this.
+    const PUMP_END_BOUND: Duration = Duration::from_secs(2);
+
     let mut pump = PumpHarness::start_as_a_pty_pump();
     let mut written = String::new();
     for n in 0..LINES {
@@ -753,22 +758,36 @@ async fn a_pty_pump_does_not_pay_a_wait_per_line_to_a_reader_that_keeps_just_up(
     drop(pump.out_writer);
     drop(pump.err_writer);
 
-    let mut forwarded = 0;
-    timeout(PUMP_DEADLINE, async {
-        while pump.logs.recv().await.is_some() {
-            forwarded += 1;
+    // The reader that keeps just up: slower than this pump, but it hands back
+    // a slot inside every `LIVE_WAIT`, which is what makes a per-line wait
+    // look like progress.
+    let seen = Arc::new(AtomicUsize::new(0));
+    let counting = Arc::clone(&seen);
+    let mut logs = pump.logs;
+    let reader = tokio::spawn(async move {
+        while logs.recv().await.is_some() {
+            counting.fetch_add(1, Ordering::Relaxed);
             tokio::time::sleep(READER_GAP).await;
         }
-    })
-    .await
-    .expect("the pump must end once its streams close");
+    });
 
-    // Giving up on live copies is the point: the file has every line either
-    // way, and a pump that forwarded all of them was reading its terminal at
-    // this reader's pace.
+    // The pump's own end is the measurement, since the pump is what reads the
+    // master: it drops its control receiver only once its streams are drained.
+    let started = Instant::now();
+    let ended = timeout(PUMP_END_BOUND, async {
+        while !pump.ctl.is_closed() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    let elapsed = started.elapsed();
+    let forwarded = seen.load(Ordering::Relaxed);
+    reader.abort();
+
     assert!(
-        forwarded < LINES,
-        "a pump held at its reader\'s pace forwarded all {forwarded} of {LINES}"
+        ended.is_ok(),
+        "a pump paying a fresh `LIVE_WAIT` per line read {forwarded} of {LINES} lines in \
+         {elapsed:?} at its reader's {READER_GAP:?} pace, and never came back to its master"
     );
     assert_file_settles(&pump.out_path, &written).await;
 }
