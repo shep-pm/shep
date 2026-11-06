@@ -119,6 +119,14 @@ pub(super) fn rpc_error(err: &SupervisorError) -> RpcError {
             message: err.to_string(),
             daemon_version: None,
         },
+        // The caller can ask for another sheep, or set `pty = true` on this
+        // one, so it is a config-shaped refusal; `Display` names the sheep.
+        SupervisorError::NoPty { .. } => invalid_config(err),
+        SupervisorError::PtyFailed(_) => RpcError {
+            code: RpcErrorCode::Internal,
+            message: err.to_string(),
+            daemon_version: None,
+        },
         SupervisorError::EngineStopped => RpcError {
             code: RpcErrorCode::Internal,
             message: "the supervisor engine has stopped".to_string(),
@@ -143,6 +151,16 @@ mod tests {
         assert_eq!(from_error.code, RpcErrorCode::InvalidConfig);
         assert_eq!(from_error.message, "duplicate sheep name `web`");
         assert_eq!(from_error.daemon_version, None);
+    }
+
+    #[test]
+    fn a_sheep_without_a_pty_is_refused_by_name() {
+        let err = rpc_error(&SupervisorError::NoPty {
+            name: "web".to_string(),
+        });
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig);
+        assert_eq!(err.message, "sheep web has no pty: set pty = true");
+        assert_eq!(err.daemon_version, None);
     }
 
     #[test]

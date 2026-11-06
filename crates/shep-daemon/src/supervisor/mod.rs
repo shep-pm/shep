@@ -64,8 +64,8 @@ use crate::probes::ready::{Readiness, ReadinessSource, await_ready};
 #[cfg(unix)]
 use crate::runner::AdoptSpec;
 use crate::runner::{
-    ExitOutcome, FlushError, LogCtl, LogOpen, Preflight, ProcIo, ProcessRunner, PtyHandle,
-    ReopenError, RunnerError, RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry,
+    ExitOutcome, FlushError, LogCtl, LogOpen, Preflight, ProcIo, ProcessRunner, PtyError,
+    PtyHandle, ReopenError, RunnerError, RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry,
     cwd_advisory, log_path_advisory, open_log_path,
 };
 use crate::secrets::ProviderSecrets;
@@ -81,6 +81,7 @@ mod actor_exit;
 mod actor_lifecycle;
 mod actor_listen;
 mod actor_pane;
+mod actor_pty;
 mod actor_reload;
 mod actor_reload_done;
 mod actor_reset;
@@ -140,7 +141,8 @@ use tasks::{
     spawn_trigger_task, spec_prober,
 };
 pub(crate) use types::{
-    Applied, BatchPolicy, ConnId, DEFAULT_ENVIRONMENT, EnvBatch, EnvCopy, FieldSet, SheepDogRead,
+    Applied, BatchPolicy, ConnId, DEFAULT_ENVIRONMENT, EnvBatch, EnvCopy, FieldSet, PtyAttached,
+    SheepDogRead,
 };
 use types::{PendingReply, Registration, Scaled, SheepCtl, Smits};
 use wire::{reload_eligible, restored_status, send_reply, swap_budget, to_info};

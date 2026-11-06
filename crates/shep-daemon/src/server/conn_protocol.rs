@@ -5,15 +5,17 @@ use super::peer_auth::{check_peer, daemon_uid, peer_pid};
 use super::server_lifecycle::{CONN_QUEUE, HANDSHAKE_TIMEOUT_MS};
 use super::tracked_codec::TrackedCodec;
 use crate::bus::TopicFilter;
-use crate::rpc::{Outcome, RpcContext, check_carried, dispatch, spawn_checked_forwarder};
+use crate::rpc::{
+    Outcome, PtyWriter, RpcContext, check_carried, dispatch, spawn_checked_forwarder,
+};
 use crate::supervisor::ConnId;
 use bytes::{Bytes, BytesMut};
 use core::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
 use shep_core::protocol::{
-    BusEvent, Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcError,
-    RpcErrorCode, codec, decode_frame, encode_frame,
+    BusEvent, Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, Reply,
+    Request, RpcError, RpcErrorCode, codec, decode_frame, encode_frame,
 };
 use shep_core::transport::{ServerReadHalf, ServerStream};
 use std::io;
@@ -94,9 +96,9 @@ async fn converse(
     origin: &Origin,
     ctx: &RpcContext,
 ) -> Result<(), ConnError> {
-    let mut forwarder: Option<JoinHandle<()>> = None;
+    let mut streams = Streams::default();
     if let Some(topics) = origin.resumed() {
-        forwarder = resume(out, peer, origin, ctx, topics).await?;
+        streams.events = resume(out, peer, origin, ctx, topics).await?;
     } else {
         handshake(frames, out, peer, origin, ctx).await?;
     }
@@ -107,7 +109,7 @@ async fn converse(
         conn,
         ctx,
         origin,
-        &mut forwarder,
+        &mut streams,
         &mut attribution,
     )
     .await;
@@ -115,10 +117,22 @@ async fn converse(
     // aborted rather than dropped: dropping a `JoinHandle` detaches the task,
     // which keeps its clone of `out` alive, which keeps `write_loop` from ever
     // seeing every sender gone and hangs `handle_conn`'s `writer.await`.
-    if let Some(forwarder) = forwarder {
-        forwarder.abort();
+    if let Some(task) = streams.events {
+        task.abort();
+    }
+    if let Some(writer) = streams.pty {
+        writer.abort();
     }
     outcome
+}
+
+/// The tasks a connection has started to write events to it.
+#[derive(Default)]
+struct Streams {
+    /// The `Subscribe` forwarder.
+    events: Option<JoinHandle<()>>,
+    /// The `Attach` writer.
+    pty: Option<PtyWriter>,
 }
 
 async fn read_loop(
@@ -127,13 +141,34 @@ async fn read_loop(
     conn: ConnId,
     ctx: &RpcContext,
     origin: &Origin,
-    forwarder: &mut Option<JoinHandle<()>>,
+    streams: &mut Streams,
     attribution: &mut Attribution,
 ) -> Result<(), ConnError> {
     while let Some(frame) = next_frame(frames, origin).await {
         let frame = frame?; // oversize/short frame ends the connection
         let envelope: Envelope = decode_frame(&frame).map_err(ConnError::Decode)?;
         attribution.note(ctx, &envelope.body);
+        // Refused before dispatch, which would resize the first sheep's
+        // terminal for an attach it then turns away.
+        if matches!(envelope.body, Request::Attach { .. }) {
+            if streams.pty.as_ref().is_some_and(PtyWriter::is_live) {
+                let refusal = Reply {
+                    id: envelope.id,
+                    result: Err(RpcError {
+                        code: RpcErrorCode::InvalidConfig,
+                        message: "this connection is already attached to a pty".to_owned(),
+                        daemon_version: None,
+                    }),
+                };
+                send(out, &refusal).await?;
+                continue;
+            }
+            // An ended writer may not have queued its `PtyEnd` yet, and the
+            // new attach's reply must not overtake it.
+            if let Some(ended) = streams.pty.take() {
+                ended.finish().await;
+            }
+        }
         match dispatch(envelope, conn, origin.link(), ctx).await {
             Outcome::Reply(reply) => send(out, &reply).await?,
             Outcome::Subscribe { reply, filter } => {
@@ -143,7 +178,7 @@ async fn read_loop(
                 send(out, &reply).await?; // ordered ahead of any event by the queue
                 // A second Subscribe REPLACES the first: spec §6 gives a
                 // connection one topic list, not a growing union.
-                if let Some(old) = forwarder.replace(spawn_checked_forwarder(
+                if let Some(old) = streams.events.replace(spawn_checked_forwarder(
                     ctx,
                     origin.link(),
                     filter,
@@ -151,6 +186,10 @@ async fn read_loop(
                 )) {
                     old.abort();
                 }
+            }
+            Outcome::Attach { reply, output } => {
+                send(out, &reply).await?;
+                streams.pty = Some(output.forward(out.clone()));
             }
             Outcome::Shutdown(reply) => {
                 send(out, &reply).await?;

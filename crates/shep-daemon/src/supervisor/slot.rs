@@ -172,7 +172,6 @@ impl SheepSlot {
     ///
     /// Read off the handle rather than `AppConfig::pty`, as
     /// [`Self::open_stdin`] is.
-    #[allow(dead_code, reason = "nothing but its test reads a terminal yet")]
     pub(super) fn open_pty(&self) -> Option<&PtyHandle> {
         self.pty.as_ref().filter(|pty| !pty.is_closed())
     }

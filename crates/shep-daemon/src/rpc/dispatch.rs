@@ -19,6 +19,7 @@ use crate::bus::TopicFilter;
 use crate::dogs::DogSpec;
 use crate::supervisor::{BatchPolicy, ConnId, SheepDogRead, SupervisorError};
 
+use super::PtyStream;
 use super::batch::{duplicate_name, persists, staged_plan};
 use super::context::{Outcome, RpcContext, budget};
 use super::dog_events::publish_dog_event;
@@ -523,6 +524,41 @@ async fn run(
             },
             Err(err) => reply(Err(invalid_config(err))),
         },
+        // The shepherd subscribes, then resizes the same terminal, so the
+        // redraw is heard and both name one instance.
+        Request::Attach { name, rows, cols } => {
+            match ctx.supervisor.pty_attach(name.clone(), rows, cols).await {
+                Ok(attached) => Outcome::Attach {
+                    reply: Reply {
+                        id,
+                        result: Ok(Response::Attached {
+                            id: attached.id,
+                            name: name.clone(),
+                        }),
+                    },
+                    output: PtyStream::new(name, attached.output),
+                },
+                Err(err) => reply(Err(rpc_error(&err))),
+            }
+        }
+        // Answered with `Attached`, the one reply that names an instance:
+        // the wire has no bare acknowledgement.
+        Request::PtyInput { name, data } => {
+            match ctx
+                .supervisor
+                .pty_input(name.clone(), data.into_bytes())
+                .await
+            {
+                Ok(id) => reply(Ok(Response::Attached { id, name })),
+                Err(err) => reply(Err(rpc_error(&err))),
+            }
+        }
+        Request::PtyResize { name, rows, cols } => {
+            match ctx.supervisor.pty_resize(name.clone(), rows, cols).await {
+                Ok(id) => reply(Ok(Response::Attached { id, name })),
+                Err(err) => reply(Err(rpc_error(&err))),
+            }
+        }
         Request::DogStaleness => {
             let (stale, pending) = dog_staleness(ctx).await;
             reply(Ok(Response::DogStaleness { stale, pending }))

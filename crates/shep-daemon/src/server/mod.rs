@@ -28,7 +28,7 @@ mod resume_tests;
 mod revoked_subscription_tests;
 mod server_lifecycle;
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 mod tracked_codec;
 pub(crate) use dog_links::serve_dog_links;
 #[cfg(unix)]

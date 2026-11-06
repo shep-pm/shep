@@ -21,7 +21,7 @@ go for the full argument. The commit that removed them names itself.
 
 - [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (5)
 - [The CLI surface](#the-cli-surface) (8)
-- [Supervision and lifecycle](#supervision-and-lifecycle) (20)
+- [Supervision and lifecycle](#supervision-and-lifecycle) (21)
 - [The log plane](#the-log-plane) (9)
 - [Reload](#reload) (9)
 - [Custom actions and the shepherd channel](#custom-actions-and-the-shepherd-channel) (10)
@@ -369,6 +369,16 @@ The master's output goes through a filter before the log pump sees it. It remove
 **Why:** #1561, under #1557. A program that checks `isatty` (a REPL, a CLI that colours or prompts) behaves differently on a pipe, and a sheep that needs a terminal had no way to get one. `rustix` over `nix` or `openpty`: it is already in the tree through `shep-tree`, and it has `openpt`, `grantpt`, `unlockpt`, `ptsname` and `tcsetwinsize` as safe calls, so the only `unsafe` is the pre-exec hook in `sys.rs`. `portable-pty` and `nix::pty` would add a crate or a feature for the same five calls. A fixed window because a log line wants a width and nobody asked for another; a config key is cheap to add later and expensive to remove. Control codes are removed rather than kept because the log is read by people and `grep`, and a raw screen redraw is unreadable in both; the cost is that a full-screen program logs fragments and a colour a reader might want is gone. `AsyncFd::new` is deprecated by tokio 1.53.3 in favour of `register`, which this crate does not use because the workspace floor is 1.41.
 
 `verified crates/shep-daemon/src/tokio_runner/pty.rs (open, attach, PtyReader), crates/shep-daemon/src/tokio_runner/ansi.rs (AnsiLines), crates/shep-daemon/src/sys.rs (take_terminal_on_exec), crates/shep-daemon/src/assemble/spawn_spec.rs (build)`
+
+### An attach streams a pty's output as JSON text events, live only, with no replay
+
+`Request::Attach` subscribes the connection to one sheep's master and answers `Attached`. The output then arrives as `BusEvent::PtyOut` frames on that connection, and `PtyEnd` when the terminal closes. Keys and sizes go back as `PtyInput` and `PtyResize` requests on the same connection. The shepherd subscribes before it resizes, so the redraw the new size provokes is the first thing heard. A connection attaches once while its stream is open: a second `Attach` is refused before it resizes anything. Closing the connection drops the subscription. `PtyInput` and `PtyResize` answer `Attached` too, since the wire has no bare acknowledgement.
+
+`data` is a JSON string, so a chunk that ends inside a multibyte character holds the partial bytes back until the rest arrives. A byte that starts no character becomes U+FFFD, and so does a tail the terminal closes on. A client that falls behind gets `Dropped` with the count of chunks lost, and the held bytes are discarded.
+
+**Why:** #1565. Text rather than base64 or a byte array because every frame on this socket is JSON, a terminal's output is text in the cases that matter, and base64 would make a `bleats`-style debug of the stream unreadable. The cost is the lossy case above: a program that writes binary to its terminal gets U+FFFD where the bytes were. Live only because the shepherd keeps no scrollback and a screen is redrawn on demand: the resize at attach is what makes the program repaint, so a replay buffer would store what the program can already be asked for. A program that does not redraw on `SIGWINCH` shows a blank screen until it next writes.
+
+`verified crates/shep-daemon/src/rpc/pty_stream.rs (PtyStream), crates/shep-daemon/src/rpc/dispatch.rs (Request::Attach), crates/shep-daemon/src/server/conn_protocol.rs (read_loop)`
 
 ## The log plane
 

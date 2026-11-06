@@ -133,6 +133,8 @@ pub fn spawn_cron_worker(
                         | SupervisorError::InvalidEnv(_)
                         | SupervisorError::InvalidField(_)
                         | SupervisorError::Overrides(_)
+                        | SupervisorError::NoPty { .. }
+                        | SupervisorError::PtyFailed(_)
                         | SupervisorError::NoSuchSheep(_)
                         | SupervisorError::EnvChanged(_)),
                     ) => {

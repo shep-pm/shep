@@ -16,20 +16,20 @@ use tokio_util::codec::Framed;
 
 const RECV_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub(super) struct Client {
-    pub(super) frames:
+pub(crate) struct Client {
+    pub(crate) frames:
         Framed<shep_core::transport::ClientStream, tokio_util::codec::LengthDelimitedCodec>,
 }
 
 impl Client {
-    pub(super) async fn send<T: Serialize>(&mut self, value: &T) {
+    pub(crate) async fn send<T: Serialize>(&mut self, value: &T) {
         self.frames
             .send(encode_frame(value).unwrap())
             .await
             .unwrap();
     }
 
-    pub(super) async fn recv<T: DeserializeOwned>(&mut self) -> T {
+    pub(crate) async fn recv<T: DeserializeOwned>(&mut self) -> T {
         let frame = tokio::time::timeout(RECV_TIMEOUT, self.frames.next())
             .await
             .expect("timed out waiting for a frame")
@@ -43,7 +43,7 @@ impl Client {
     /// A test that is not about the handshake itself has no use for the
     /// ack's fields, and asserting the ack here keeps a refusal from
     /// surfacing later as an unrelated frame.
-    pub(super) async fn handshake(&mut self) {
+    pub(crate) async fn handshake(&mut self) {
         self.send(&Hello {
             client_version: "0.1.0".to_string(),
             protocol: PROTOCOL_VERSION,
@@ -58,7 +58,7 @@ impl Client {
     ///
     /// Reading subscribed events alone would report a subscription the
     /// daemon never took as a recv timeout.
-    pub(super) async fn subscribe(&mut self, topics: &[&str]) {
+    pub(crate) async fn subscribe(&mut self, topics: &[&str]) {
         self.send(&Envelope {
             id: 1,
             deadline_ms: None,
@@ -74,7 +74,7 @@ impl Client {
         );
     }
 
-    pub(super) async fn closed(&mut self) -> bool {
+    pub(crate) async fn closed(&mut self) -> bool {
         tokio::time::timeout(RECV_TIMEOUT, self.frames.next())
             .await
             .expect("timed out waiting for close")
@@ -89,7 +89,7 @@ impl Client {
 /// pipe on Windows, rather than an in-memory duplex: several cases in
 /// `conn_protocol`
 /// turn on what a peer sees when the other side closes.
-pub(super) async fn connected(ctx: RpcContext) -> Client {
+pub(crate) async fn connected(ctx: RpcContext) -> Client {
     let (server, client) = shep_core::transport::connected_pair().await.unwrap();
     tokio::spawn(async move {
         let _ = handle_conn(server, ctx).await;
@@ -107,7 +107,7 @@ pub(super) async fn connected(ctx: RpcContext) -> Client {
 ///
 /// Straight through [`crate::supervisor::SupervisorHandle::start_dog`]:
 /// `Request::EnableDog` would need a handshaken connection of its own.
-pub(super) async fn start_dog(ctx: &RpcContext, name: &str) -> ProcessInfo {
+pub(crate) async fn start_dog(ctx: &RpcContext, name: &str) -> ProcessInfo {
     let spec = crate::dogs::DogSpec {
         name: name.to_string(),
         source: DogSource::BuiltIn {
@@ -136,7 +136,7 @@ pub(super) async fn start_dog(ctx: &RpcContext, name: &str) -> ProcessInfo {
 /// it returns the error that closes the socket, so a caller that has seen
 /// the close can read the verdict without racing it. The restart itself
 /// runs on its own task and needs [`await_dog`].
-pub(super) async fn refuse_as(ctx: &RpcContext, dog: Option<&str>) {
+pub(crate) async fn refuse_as(ctx: &RpcContext, dog: Option<&str>) {
     let mut client = connected(ctx.clone()).await;
     client
         .send(&Hello {
@@ -154,7 +154,7 @@ pub(super) async fn refuse_as(ctx: &RpcContext, dog: Option<&str>) {
 }
 
 /// The flock row named `name`, or a panic naming what was there.
-pub(super) async fn dog_row(ctx: &RpcContext, name: &str) -> ProcessInfo {
+pub(crate) async fn dog_row(ctx: &RpcContext, name: &str) -> ProcessInfo {
     ctx.supervisor
         .list()
         .await
@@ -170,7 +170,7 @@ pub(super) async fn dog_row(ctx: &RpcContext, name: &str) -> ProcessInfo {
 /// handle to await. The elapsed time is returned because the
 /// `conn_protocol`'s `a_twice_refused_dog_is_reported_stale_and_never_restarted_again`
 /// sizes its negative window against it.
-pub(super) async fn await_dog(ctx: &RpcContext, name: &str, pid: u32) -> Duration {
+pub(crate) async fn await_dog(ctx: &RpcContext, name: &str, pid: u32) -> Duration {
     let began = tokio::time::Instant::now();
     let seen = tokio::time::timeout(RECV_TIMEOUT, async {
         loop {

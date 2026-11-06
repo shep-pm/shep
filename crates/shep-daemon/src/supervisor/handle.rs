@@ -863,6 +863,73 @@ impl SupervisorHandle {
         .await?
     }
 
+    /// Subscribes to the output of `name`'s pty, from now on, then sizes that
+    /// same terminal to `rows` by `cols` so the program redraws into the
+    /// subscription.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::NoSuchSheep`]: nothing is registered as `name`.
+    /// - [`SupervisorError::NoPty`]: no instance of it has an open pty.
+    /// - [`SupervisorError::PtyFailed`]: the OS refused the size, or it did
+    ///   not finish within [`STDIN_WRITE_TIMEOUT`].
+    /// - [`SupervisorError::EngineStopped`]: the actor is gone.
+    pub(crate) async fn pty_attach(
+        &self,
+        name: String,
+        rows: u16,
+        cols: u16,
+    ) -> Result<PtyAttached, SupervisorError> {
+        self.call(|reply| Command::PtyAttach {
+            name,
+            rows,
+            cols,
+            reply,
+        })
+        .await?
+    }
+
+    /// Types `bytes` into `name`'s pty exactly as given, bounded at
+    /// [`STDIN_WRITE_TIMEOUT`], and answers with the id of the instance
+    /// that took them.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::NoSuchSheep`]: nothing is registered as `name`.
+    /// - [`SupervisorError::NoPty`]: no instance of it has an open pty.
+    /// - [`SupervisorError::PtyFailed`]: the OS refused the write, or it did
+    ///   not land in time.
+    /// - [`SupervisorError::EngineStopped`]: the actor is gone.
+    pub(crate) async fn pty_input(
+        &self,
+        name: String,
+        bytes: Vec<u8>,
+    ) -> Result<u32, SupervisorError> {
+        self.call(|reply| Command::PtyInput { name, bytes, reply })
+            .await?
+    }
+
+    /// Sets the window size of `name`'s pty, and answers with the id of the
+    /// instance sized.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::pty_input`].
+    pub(crate) async fn pty_resize(
+        &self,
+        name: String,
+        rows: u16,
+        cols: u16,
+    ) -> Result<u32, SupervisorError> {
+        self.call(|reply| Command::PtyResize {
+            name,
+            rows,
+            cols,
+            reply,
+        })
+        .await?
+    }
+
     /// Full flock listing, name-grouped (see [`Actor::snapshot_all`]).
     ///
     /// # Errors

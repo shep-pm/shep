@@ -2,7 +2,7 @@ use super::fake_process::{FakeIo, FakeProc, ProcState};
 use super::proc_script::ProcScript;
 #[cfg(unix)]
 use super::stand_ins::open_reportable_fds;
-use super::stand_ins::quiet_pty;
+use super::stand_ins::{PtyTap, scripted_pty};
 use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::privilege::Credentials;
 use crate::runner::{LogCtl, Preflight, ProcIo, ProcessRunner, RunnerError, SpawnSpec, StdinWrite};
@@ -25,6 +25,8 @@ pub(super) const CHANNEL_CAPACITY: usize = 32;
 /// enough (~30 days of milliseconds) to stay far under tokio's timer-wheel
 /// range and never risk an `Instant + Duration` overflow.
 pub(super) const NEVER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+
+mod pty;
 
 /// One spawn's shared state plus its still-unclaimed [`FakeIo`] test handles
 struct SpawnedProc {
@@ -85,6 +87,9 @@ struct SpawnedProc {
     /// [`SpawnSpec::pids_max`], read back via
     /// [`ScriptedRunner::spawned_pids_max`].
     pids_max: Option<u32>,
+    /// The test side of this spawn's terminal, for a spawn that asked for one,
+    /// read back via [`ScriptedRunner::pty_input`] and its siblings.
+    pty: Option<Arc<PtyTap>>,
 }
 
 /// The pid [`ScriptedRunner`] gives the first proc it spawns; each later
@@ -673,6 +678,11 @@ impl ProcessRunner for ScriptedRunner {
             drop(to_stdin_rx);
         }
 
+        let (pty_handle, pty_tap) = match spec.pty.then(scripted_pty) {
+            Some((handle, tap)) => (Some(handle), Some(tap)),
+            None => (None, None),
+        };
+
         let mut spawned = self.spawned.lock().unwrap();
         let index = spawned.len();
         spawned.push(SpawnedProc {
@@ -697,6 +707,7 @@ impl ProcessRunner for ScriptedRunner {
             memory_max: spec.memory_max,
             cpu_quota: spec.cpu_quota,
             pids_max: spec.pids_max,
+            pty: pty_tap,
         });
         drop(spawned);
 
@@ -706,7 +717,7 @@ impl ProcessRunner for ScriptedRunner {
             to_child: to_child_tx,
             log_ctl: log_ctl_tx,
             to_stdin: to_stdin_tx,
-            pty: spec.pty.then(quiet_pty),
+            pty: pty_handle,
         };
         // Arbitrary but deterministic: real pids come from the OS in the real runner.
         let pid = self

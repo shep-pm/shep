@@ -109,6 +109,15 @@ pub enum SupervisorError {
     /// [`RpcErrorCode::InvalidConfig`](shep_core::protocol::RpcErrorCode::InvalidConfig):
     /// the caller can ask again from a fresh dry run.
     EnvChanged(String),
+    /// The named sheep has no open pty: it runs on pipes, is not running, or
+    /// its terminal has closed.
+    NoPty {
+        /// The sheep's name.
+        name: String,
+    },
+    /// The sheep's pty is open and the OS refused a write or a size; carries
+    /// the OS message, or says the write did not finish in time.
+    PtyFailed(String),
     /// The actor has shut down; its mailbox is closed.
     EngineStopped,
 }
@@ -136,6 +145,8 @@ impl fmt::Display for SupervisorError {
                 f,
                 "the env changed since the copy was reviewed ({keys}); nothing was written"
             ),
+            Self::NoPty { name } => write!(f, "sheep {name} has no pty: set pty = true"),
+            Self::PtyFailed(msg) => f.write_str(msg),
             Self::EngineStopped => f.write_str("supervisor engine has shut down"),
         }
     }

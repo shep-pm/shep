@@ -24,6 +24,15 @@ impl ConnId {
     }
 }
 
+/// What an attach to a sheep's pty hands back.
+#[derive(Debug)]
+pub(crate) struct PtyAttached {
+    /// The id of the instance whose terminal this hears.
+    pub(crate) id: u32,
+    /// The terminal's output from the moment of the attach, raw bytes.
+    pub(crate) output: tokio::sync::broadcast::Receiver<bytes::Bytes>,
+}
+
 /// Every sheep name that currently carries a smit, and which connection
 /// painted it.
 ///
