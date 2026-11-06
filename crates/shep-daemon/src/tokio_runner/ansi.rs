@@ -43,14 +43,15 @@ enum State {
 /// Reads another reader's bytes as plain text: escape sequences removed, line
 /// ends normalised, and invalid UTF-8 replaced.
 ///
-/// A sequence vanishes even when a read boundary falls inside it. A bare `\r`
-/// and a CSI that moves the cursor or erases each end a line that has text,
-/// and `\r\n` becomes `\n`. The output is valid UTF-8 for `LineReader`, with
-/// `U+FFFD` for each invalid sequence.
+/// A sequence vanishes even when a read boundary falls inside it. A run of
+/// `\r` counts as one, and with a CSI that moves the cursor or erases ends a
+/// line that has text; `\r\n` becomes `\n`. The output is valid UTF-8 for
+/// `LineReader`, with `U+FFFD` for each invalid sequence.
 pub(super) struct AnsiLines<R> {
     inner: R,
     state: State,
-    /// A `\r` was last seen and not yet resolved by the byte after it.
+    /// A `\r` was last seen and not yet resolved by the byte after it. A run
+    /// of them counts as one.
     cr_pending: bool,
     /// The line being written has a visible byte.
     line_has_text: bool,
@@ -171,10 +172,7 @@ impl<R> AnsiLines<R> {
     /// A byte outside any escape sequence.
     fn ground(&mut self, byte: u8, text: &mut Vec<u8>) {
         match byte {
-            b'\r' => {
-                self.settle_cr(text);
-                self.cr_pending = true;
-            }
+            b'\r' => self.cr_pending = true,
             b'\n' => {
                 self.cr_pending = false;
                 text.push(b'\n');
@@ -331,6 +329,21 @@ mod tests {
     #[tokio::test]
     async fn a_carriage_return_before_a_newline_is_just_the_newline() {
         assert_eq!(filtered(&[b"a\r", b"\nb\r\n\r\n"]).await, "a\nb\n\n");
+    }
+
+    #[tokio::test]
+    async fn a_doubled_carriage_return_before_a_newline_is_just_the_newline() {
+        // A tty with a full output queue writes `\r\r\n` where the program
+        // wrote `\n`. A terminal draws that as one line break.
+        assert_eq!(filtered(&[b"a\r\r\nb\n"]).await, "a\nb\n");
+        assert_eq!(filtered(&[b"a\r", b"\r\nb\n"]).await, "a\nb\n");
+        assert_eq!(filtered(&[b"a\r\r\r\nb\n"]).await, "a\nb\n");
+    }
+
+    #[tokio::test]
+    async fn a_doubled_carriage_return_before_text_still_ends_the_line() {
+        assert_eq!(filtered(&[b"a\r\rb\n"]).await, "a\nb\n");
+        assert_eq!(filtered(&[b"a\r", b"\rb\n"]).await, "a\nb\n");
     }
 
     #[tokio::test]
