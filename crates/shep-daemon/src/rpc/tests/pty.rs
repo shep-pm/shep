@@ -4,11 +4,17 @@
 //! Real clock, not paused: a connection runs over a real socketpair, and a
 //! paused clock would fire `Client::recv`'s bound while a frame is in flight.
 //! Every wait is bounded by that `recv`, or by `until`.
+//!
+//! A test that starts a pty sheep is `cfg(unix)`: `normalize` refuses
+//! `pty = true` on Windows, so no such sheep can start there.
 
 use super::*;
 use crate::server::testing::{Client, connected};
-use shep_core::protocol::{BusEvent, ServerFrame};
+#[cfg(unix)]
+use shep_core::protocol::BusEvent;
+use shep_core::protocol::ServerFrame;
 
+#[cfg(unix)]
 /// Starts `web` on a pty through `h`, asserting the start landed.
 async fn start_pty_web(h: &Harness) {
     let mut config = AppConfig::minimal("web", "./srv");
@@ -50,6 +56,7 @@ fn attach(name: &str, rows: u16, cols: u16) -> Request {
     }
 }
 
+#[cfg(unix)]
 /// Reads the next frame, which must be an event.
 async fn next_event(client: &mut Client) -> BusEvent {
     match client.recv::<ServerFrame>().await {
@@ -58,6 +65,7 @@ async fn next_event(client: &mut Client) -> BusEvent {
     }
 }
 
+#[cfg(unix)]
 fn pty_out(name: &str, data: &str) -> BusEvent {
     BusEvent::PtyOut {
         name: name.to_string(),
@@ -65,6 +73,7 @@ fn pty_out(name: &str, data: &str) -> BusEvent {
     }
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn attach_streams_the_sheeps_output_as_pty_out_events() {
     let h = harness(vec![ProcScript::never_exits()]);
@@ -84,6 +93,7 @@ async fn attach_streams_the_sheeps_output_as_pty_out_events() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn attach_forces_a_redraw_with_the_given_window_size() {
     let h = harness(vec![ProcScript::never_exits()]);
@@ -106,6 +116,7 @@ async fn attach_forces_a_redraw_with_the_given_window_size() {
     assert_eq!(h.runner.pty_sizes(0), [(24, 80), (50, 132)]);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn pty_input_reaches_the_sheep() {
     let h = harness(vec![ProcScript::never_exits()]);
@@ -174,6 +185,7 @@ async fn attaching_a_sheep_without_pty_is_refused_by_name() {
     assert_eq!(err.message, "no sheep named ghost");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_split_multibyte_character_is_sent_whole() {
     let h = harness(vec![ProcScript::never_exits()]);
@@ -184,13 +196,14 @@ async fn a_split_multibyte_character_is_sent_whole() {
         .result
         .unwrap();
 
-    // `é` is 0xC3 0xA9: the first read ends between its two bytes.
-    h.runner.pty_emit(0, b"caf\xc3");
-    assert_eq!(next_event(&mut client).await, pty_out("web", "caf"));
-    h.runner.pty_emit(0, b"\xa9!");
-    assert_eq!(next_event(&mut client).await, pty_out("web", "\u{e9}!"));
+    // `ï` is 0xC3 0xAF: the first read ends between its two bytes.
+    h.runner.pty_emit(0, b"na\xc3");
+    assert_eq!(next_event(&mut client).await, pty_out("web", "na"));
+    h.runner.pty_emit(0, b"\xaf!");
+    assert_eq!(next_event(&mut client).await, pty_out("web", "\u{ef}!"));
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn the_stream_ends_with_pty_end_when_the_sheep_exits() {
     let h = harness(vec![ProcScript::never_exits()]);
@@ -212,6 +225,7 @@ async fn the_stream_ends_with_pty_end_when_the_sheep_exits() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn closing_the_connection_drops_the_subscription() {
     let h = harness(vec![ProcScript::never_exits()]);
@@ -233,6 +247,7 @@ async fn closing_the_connection_drops_the_subscription() {
     assert!(dropped.is_ok(), "the subscription outlived its connection");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_second_attach_on_one_connection_is_refused() {
     let h = harness(vec![ProcScript::never_exits()]);
