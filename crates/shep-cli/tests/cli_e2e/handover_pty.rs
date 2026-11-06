@@ -30,12 +30,9 @@ fn await_log_line(path: &Path, what: &str, want: impl Fn(&str) -> bool) -> Strin
 /// A pty sheep keeps its pid and its terminal across `shep daemon reload`,
 /// and a whisper after it is answered on the same terminal.
 ///
-/// The sheep traps `SIGHUP`: a master closed by the exec would hang the
-/// terminal up, so a `got-hup` line is the failure a carried master prevents.
-/// The terminal's own name is printed with each answer, since a new pty
-/// under the same pid would still answer.
-///
-/// Unix only, as the whole handover is: Windows has no `execve`.
+/// The sheep traps `SIGHUP`, which a master closed by the exec would raise.
+/// Each answer names the terminal: a new pty under the same pid would
+/// still answer.
 #[cfg(unix)]
 #[test]
 fn a_pty_sheep_keeps_its_pid_and_its_terminal_across_a_reload() {
