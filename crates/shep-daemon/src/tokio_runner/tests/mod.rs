@@ -33,6 +33,7 @@ mod handover;
 #[cfg(unix)]
 mod listen_layout;
 mod log_io;
+mod log_paths;
 #[cfg(unix)]
 mod pty;
 mod spawn_io;
