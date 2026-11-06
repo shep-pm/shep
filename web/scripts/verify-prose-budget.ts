@@ -487,7 +487,10 @@ export const BUDGETS: Record<string, number> = {
   // what the 5.6 and seccomp fallback loses, and that Windows refuses no
   // symlink. Required content, not prose to trim back out.
   // Raised from 2037 for #1562: where a `pty = true` sheep's output lands.
-  logs: 2060,
+  // Raised from 2060 for #1593: the sentence saying a live `shep bleats` can
+  // skip lines from a pty sheep when the shepherd falls behind. Required
+  // content for a behaviour an operator can see, not prose to trim back out.
+  logs: 2085,
   // Raised from 1690 on 2026-09-28 for "Naming your lambs": `lamb-label`
   // is a new message an app author has to be told about, not prose to trim
   // back out.

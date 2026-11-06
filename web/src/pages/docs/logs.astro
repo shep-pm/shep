@@ -117,7 +117,9 @@ $ shep bleats <name> --no-follow  # tail only`}</CodeBlock>
     </p>
     <p>
       A <code>pty = true</code> sheep's output is logged as plain lines on
-      stdout, colour codes stripped. Its stderr file stays empty.
+      stdout, colour codes stripped. Its stderr file stays empty. A live
+      <code>shep bleats</code> can skip lines from a pty sheep when the
+      shepherd falls behind; the file keeps them all.
     </p>
     <p>
       Every line in those files starts with the time shep wrote it, in local
