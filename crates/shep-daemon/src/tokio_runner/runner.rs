@@ -456,12 +456,16 @@ impl ProcessRunner for TokioRunner {
             channel: channel.as_ref().map(AsRawFd::as_raw_fd),
             pty: pty_master.as_ref().map(pty::PtyMaster::raw_fd),
         };
+        let (to_stdin, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
         // A terminal is the sheep's whole stdio, so a blob never names it
-        // beside a stdout pipe: the terminal wins if one does.
-        let pty_writer = pty_master.as_ref().map(pty::PtyMaster::writer);
-        let stdout = match pty_master {
-            Some(master) => Some(Stdout::terminal(master)),
-            None => out_pipe.map(Stdout::Carried),
+        // beside a stdout pipe: the terminal wins if one does. It takes the
+        // whispers itself, so a pipe's pump gets the queue only without one.
+        let (stdout, pty_handle, to_stdin_rx) = match pty_master {
+            Some(master) => {
+                let (stdout, handle) = pty::wire(master, to_stdin_rx);
+                (Some(stdout), Some(handle), None)
+            }
+            None => (out_pipe.map(Stdout::Carried), None, Some(to_stdin_rx)),
         };
         spawn_log_pump(
             stdout,
@@ -504,13 +508,10 @@ impl ProcessRunner for TokioRunner {
             drop(from_child_tx);
             drop(to_child_rx);
         }
-        let (to_stdin, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
-        if let Some(writer) = pty_writer {
-            spawn_stdin_pump(Some(writer), b'\r', to_stdin_rx);
-        } else if let Some(stdin_pipe) = stdin_pipe {
+        if let Some(to_stdin_rx) = to_stdin_rx
+            && let Some(stdin_pipe) = stdin_pipe
+        {
             spawn_stdin_pump(Some(stdin_pipe), b'\n', to_stdin_rx);
-        } else {
-            drop(to_stdin_rx);
         }
 
         Ok((
@@ -525,6 +526,7 @@ impl ProcessRunner for TokioRunner {
                 to_child,
                 log_ctl: log_ctl_tx,
                 to_stdin,
+                pty: pty_handle,
             },
         ))
     }
@@ -894,16 +896,24 @@ impl ProcessRunner for TokioRunner {
         };
         #[cfg(not(unix))]
         let pipes = PipeFds;
+        let (to_stdin_tx, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
+        // The terminal takes the whispers itself: Enter on it is a carriage
+        // return, which a cooked terminal turns into the newline the program
+        // reads.
         #[cfg(unix)]
-        let (stdout, pty_writer) = match pty_master {
+        let (stdout, pty, to_stdin_rx) = match pty_master {
             Some(master) => {
-                let writer = master.writer();
-                (Some(Stdout::terminal(master)), Some(writer))
+                let (stdout, handle) = pty::wire(master, to_stdin_rx);
+                (Some(stdout), Some(handle), None)
             }
-            None => (child.stdout.take().map(Stdout::Pipe), None),
+            None => (
+                child.stdout.take().map(Stdout::Pipe),
+                None,
+                Some(to_stdin_rx),
+            ),
         };
         #[cfg(windows)]
-        let stdout = child.stdout.take();
+        let (stdout, pty, to_stdin_rx) = (child.stdout.take(), None, Some(to_stdin_rx));
         spawn_log_pump(
             stdout,
             child.stderr.take(),
@@ -915,19 +925,14 @@ impl ProcessRunner for TokioRunner {
             pipes,
         );
 
-        let (to_stdin_tx, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
-        #[cfg(windows)]
-        let pty_writer: Option<tokio::io::Sink> = None;
-        if let Some(writer) = pty_writer {
-            // Enter sends a carriage return, which a cooked terminal turns
-            // into the newline the program reads.
-            spawn_stdin_pump(Some(writer), b'\r', to_stdin_rx);
-        } else if spec.stdin {
-            spawn_stdin_pump(child.stdin.take(), b'\n', to_stdin_rx);
-        } else {
-            // Dropped rather than dangling, so a caller's `is_closed()` says
-            // "no pipe here" at once.
-            drop(to_stdin_rx);
+        if let Some(to_stdin_rx) = to_stdin_rx {
+            if spec.stdin {
+                spawn_stdin_pump(child.stdin.take(), b'\n', to_stdin_rx);
+            } else {
+                // Dropped rather than dangling, so a caller's `is_closed()`
+                // says "no pipe here" at once.
+                drop(to_stdin_rx);
+            }
         }
 
         let io = ProcIo {
@@ -936,6 +941,7 @@ impl ProcessRunner for TokioRunner {
             to_child: to_child_tx,
             log_ctl: log_ctl_tx,
             to_stdin: to_stdin_tx,
+            pty,
         };
         Ok((
             TokioProc {

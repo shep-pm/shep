@@ -419,6 +419,7 @@ impl<R: ProcessRunner> Actor<R> {
                 let log_ctl = io.log_ctl.clone();
                 let to_child = io.to_child.clone();
                 let to_stdin = io.to_stdin.clone();
+                let pty = io.pty.clone();
                 let handles = spawn_sheep_task::<R::Proc>(
                     id,
                     proc,
@@ -451,6 +452,7 @@ impl<R: ProcessRunner> Actor<R> {
                         to_child: Some(to_child),
                         signals: Some(handles.signals),
                         to_stdin: Some(to_stdin),
+                        pty,
                         ready_tx,
                         ..SheepSlot::new(entry)
                     },
@@ -731,6 +733,7 @@ impl<R: ProcessRunner> Actor<R> {
         let log_ctl = io.log_ctl.clone();
         let to_child = io.to_child.clone();
         let to_stdin = io.to_stdin.clone();
+        let pty = io.pty.clone();
         let handles = spawn_sheep_task::<R::Proc>(
             id,
             proc,
@@ -748,6 +751,7 @@ impl<R: ProcessRunner> Actor<R> {
                 to_child: Some(to_child),
                 signals: Some(handles.signals),
                 to_stdin: Some(to_stdin),
+                pty,
                 // Re-claimed below rather than written in directly: restoring
                 // the marker is only half of what a carried one means.
                 manual: None,

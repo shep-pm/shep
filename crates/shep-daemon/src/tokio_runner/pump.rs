@@ -394,24 +394,35 @@ pub(super) fn spawn_stdin_pump<W>(
             }
             return;
         };
-        while let Some(StdinWrite { line, done }) = rx.recv().await {
-            if done.is_closed() {
-                // The supervisor's `STDIN_WRITE_TIMEOUT` expired and it
-                // dropped the receiver. Writing now would deliver a line the
-                // operator was already told was not written.
-                continue;
-            }
-            let mut bytes = line.into_bytes();
-            // Exactly one terminator, appended here and nowhere else: the
-            // wire carries the line without one (`Request::SendLine::line`).
-            bytes.push(terminator);
-            let result = match stdin.write_all(&bytes).await {
-                Ok(()) => stdin.flush().await,
-                Err(error) => Err(error),
-            };
-            let _ = done.send(result.map_err(|error| RunnerError::WriteFailed(error.to_string())));
+        while let Some(request) = rx.recv().await {
+            write_line(&mut stdin, terminator, request).await;
         }
     });
+}
+
+/// Writes one whispered line to `stdin` and answers its caller.
+///
+/// A request whose caller has stopped listening is dropped unwritten.
+pub(super) async fn write_line<W>(stdin: &mut W, terminator: u8, request: StdinWrite)
+where
+    W: AsyncWrite + Unpin,
+{
+    let StdinWrite { line, done } = request;
+    if done.is_closed() {
+        // The supervisor's `STDIN_WRITE_TIMEOUT` expired and it
+        // dropped the receiver. Writing now would deliver a line the
+        // operator was already told was not written.
+        return;
+    }
+    let mut bytes = line.into_bytes();
+    // Exactly one terminator, appended here and nowhere else: the
+    // wire carries the line without one (`Request::SendLine::line`).
+    bytes.push(terminator);
+    let result = match stdin.write_all(&bytes).await {
+        Ok(()) => stdin.flush().await,
+        Err(error) => Err(error),
+    };
+    let _ = done.send(result.map_err(|error| RunnerError::WriteFailed(error.to_string())));
 }
 
 /// Wires the daemon side of the shepherd channel: a reader task decodes

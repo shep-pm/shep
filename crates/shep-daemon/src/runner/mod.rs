@@ -39,7 +39,8 @@ pub(crate) use path_advisories::{cwd_advisory, log_path_advisory};
 /// `execve`.
 #[cfg(unix)]
 pub use process_runner::AdoptSpec;
+pub(crate) use process_runner::PtyCommand;
 pub use process_runner::{
-    Preflight, ProcIo, ProcessRunner, RunnerError, RunningProcess, SpawnSpec, StdinWrite,
-    StopSignal,
+    Preflight, ProcIo, ProcessRunner, PtyError, PtyHandle, RunnerError, RunningProcess, SpawnSpec,
+    StdinWrite, StopSignal,
 };

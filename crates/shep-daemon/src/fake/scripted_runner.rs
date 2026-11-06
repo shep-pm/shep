@@ -1,5 +1,8 @@
 use super::fake_process::{FakeIo, FakeProc, ProcState};
 use super::proc_script::ProcScript;
+#[cfg(unix)]
+use super::stand_ins::open_reportable_fds;
+use super::stand_ins::quiet_pty;
 use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::privilege::Credentials;
 use crate::runner::{LogCtl, Preflight, ProcIo, ProcessRunner, RunnerError, SpawnSpec, StdinWrite};
@@ -13,7 +16,7 @@ use tokio::time::{Duration, Instant};
 
 /// Capacity of every channel the fake wires up: generous enough that no
 /// test blocks on backpressure without meaning to.
-const CHANNEL_CAPACITY: usize = 32;
+pub(super) const CHANNEL_CAPACITY: usize = 32;
 
 /// Delay used by [`ProcScript::never_exits`], [`ProcScript::ignores_signals`]
 /// and [`ProcScript::never_reports_its_exit`].
@@ -135,35 +138,6 @@ impl fmt::Debug for ScriptedRunner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScriptedRunner").finish_non_exhaustive()
     }
-}
-
-/// Six real, distinct, open descriptors for a fake pump to report.
-///
-/// `/dev/null`, since the fake never writes to them: a handover blob only
-/// needs the numbers to name something open. Six covers the widest shape a
-/// blob carries, stdin pipe and shepherd channel included.
-/// # Panics
-/// If `/dev/null` cannot be opened six times: the process is out of descriptors.
-#[cfg(unix)]
-#[track_caller]
-fn open_reportable_fds() -> ([std::fs::File; 6], crate::handover::CarriedFds) {
-    use std::os::fd::AsRawFd as _;
-
-    let files = core::array::from_fn(|_| {
-        std::fs::File::open("/dev/null").expect("a test host must be able to open /dev/null")
-    });
-    let files: [std::fs::File; 6] = files;
-    let fds = crate::handover::CarriedFds {
-        out_pipe: Some(files[0].as_raw_fd()),
-        err_pipe: Some(files[1].as_raw_fd()),
-        out_log: Some(files[2].as_raw_fd()),
-        err_log: Some(files[3].as_raw_fd()),
-        stdin: Some(files[4].as_raw_fd()),
-        channel: Some(files[5].as_raw_fd()),
-        dog_link: None,
-        pty: None,
-    };
-    (files, fds)
 }
 
 /// Turns a builder's borrowed name list into the owned names the runner stores.
@@ -732,6 +706,7 @@ impl ProcessRunner for ScriptedRunner {
             to_child: to_child_tx,
             log_ctl: log_ctl_tx,
             to_stdin: to_stdin_tx,
+            pty: spec.pty.then(quiet_pty),
         };
         // Arbitrary but deterministic: real pids come from the OS in the real runner.
         let pid = self
@@ -989,5 +964,24 @@ mod tests {
             })
             .unwrap();
         assert!(!io.to_stdin.is_closed());
+    }
+
+    /// The engine tier cannot reach a terminal through a fake that has none.
+    #[tokio::test(start_paused = true)]
+    async fn a_scripted_pty_spawn_hands_out_a_handle() {
+        let runner =
+            ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        let (_proc, io) = runner
+            .spawn(&SpawnSpec {
+                pty: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let handle = io.pty.expect("a pty spawn hands out a handle");
+        assert_eq!(handle.send(b"ls".to_vec()).await, Ok(()));
+        assert_eq!(handle.resize(24, 80).await, Ok(()));
+
+        let (_proc, io) = runner.spawn(&SpawnSpec::default()).unwrap();
+        assert!(io.pty.is_none(), "a piped spawn has no terminal");
     }
 }

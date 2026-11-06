@@ -75,6 +75,7 @@ fn stand_in_io() -> ProcIo {
         to_child: closed_tx(),
         log_ctl: closed_tx(),
         to_stdin: closed_tx(),
+        pty: None,
     }
 }
 
