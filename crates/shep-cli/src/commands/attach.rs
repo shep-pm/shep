@@ -187,6 +187,26 @@ pub(crate) async fn session(
     ExitCode::Success
 }
 
+/// What turns off every terminal mode a sheep can switch on through its output.
+///
+/// Mouse tracking, focus reports, application keys, the kitty keyboard stack
+/// and `modifyOtherKeys`, then the colours. Left on, they feed the shell escape
+/// sequences, and a pushed kitty protocol stops ctrl-] arriving as `0x1d`.
+/// Written before the alternate screen is left: the kitty stack is per screen.
+const RESET_MODES: &str = "\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\
+\x1b[?1004l\x1b[?1l\x1b>\x1b[<99u\x1b[>4;0m\x1b[0m";
+
+/// Writes [`RESET_MODES`] to the operator's terminal.
+///
+/// # Errors
+///
+/// Whatever the write refused. The caller is restoring a terminal and has
+/// nothing better to do than go on.
+pub(crate) fn reset_modes(out: &mut impl io::Write) -> io::Result<()> {
+    out.write_all(RESET_MODES.as_bytes())?;
+    out.flush()
+}
+
 /// How long a detach waits for the text typed before it to reach the sheep.
 const DETACH_FLUSH: Duration = Duration::from_millis(250);
 
@@ -228,7 +248,11 @@ async fn pump<'a>(
                 }
             }
             chunk = keys.recv() => {
-                let Some(chunk) = chunk else { return End::Detached };
+                // Stdin closed: leave the way ctrl-] does, so what was read
+                // before the end still reaches the sheep.
+                let Some(chunk) = chunk else {
+                    return detach(client, name, in_flight.take(), queued).await;
+                };
                 let typed_now = typed.push(&chunk);
                 queued.push_str(&typed_now.text);
                 if typed_now.detach {

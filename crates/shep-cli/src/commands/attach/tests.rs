@@ -109,6 +109,46 @@ async fn ctrl_right_bracket_detaches_and_is_not_sent() {
     assert!(String::from_utf8(err).unwrap().contains("detached"));
 }
 
+/// The input a session read before stdin closed is not lost with it.
+#[tokio::test]
+async fn text_read_before_stdin_closes_still_reaches_the_sheep() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) = accepting(dir.path()).await;
+
+    let (tty, keys, _resizes) = tty();
+    keys.send(b"ls\r".to_vec()).await.unwrap();
+    drop(keys);
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+    let code = tokio::time::timeout(BOUND, session(&client, &mut streams, "web", tty))
+        .await
+        .expect("a closed stdin must end the session");
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(typed(&mut envelopes), "ls\r");
+}
+
+/// Each mode a sheep can turn on by printing an escape sequence is turned
+/// off again, so the shell after a detach does not read them as input.
+#[test]
+fn leaving_turns_off_the_modes_a_sheep_can_switch_on() {
+    let mut out = Vec::new();
+    reset_modes(&mut out).unwrap();
+    let out = String::from_utf8(out).unwrap();
+
+    for (mode, off) in [
+        ("mouse tracking", "\x1b[?1000l"),
+        ("button-event mouse tracking", "\x1b[?1002l"),
+        ("any-event mouse tracking", "\x1b[?1003l"),
+        ("SGR mouse coordinates", "\x1b[?1006l"),
+        ("focus reports", "\x1b[?1004l"),
+        ("application cursor keys", "\x1b[?1l"),
+        ("the kitty keyboard stack", "\x1b[<99u"),
+    ] {
+        assert!(out.contains(off), "{mode} is not turned off: {out:?}");
+    }
+}
+
 #[tokio::test]
 async fn the_window_size_is_sent_at_attach_and_on_resize() {
     let dir = tempfile::tempdir().unwrap();

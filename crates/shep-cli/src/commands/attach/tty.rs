@@ -69,6 +69,7 @@ pub(super) fn open() -> io::Result<Tty> {
     // leave the terminal raw.
     let restore = term::RestoreGuard::with_action(move || {
         watcher.abort();
+        let _ = super::reset_modes(&mut io::stdout());
         term::restore();
     });
     enable_raw_mode()?;
