@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -5,7 +6,9 @@ use std::time::Duration;
 use shep_client::testing::{
     control_address, fake_client_answering_with_events, fake_client_leaving_unanswered,
 };
-use shep_core::protocol::{BusEvent, Envelope, Request, Response, RpcError, RpcErrorCode};
+use shep_core::protocol::{
+    BusEvent, Envelope, MAX_FRAME_BYTES, Request, Response, RpcError, RpcErrorCode, encode_frame,
+};
 use tokio::sync::mpsc;
 
 use super::*;
@@ -46,15 +49,20 @@ fn tty() -> (Tty, mpsc::Sender<Vec<u8>>, mpsc::Sender<Size>) {
     )
 }
 
-/// The bytes of every `PtyInput` that has reached the shepherd.
-fn typed(envelopes: &mut mpsc::UnboundedReceiver<Envelope>) -> Vec<u8> {
-    let mut bytes = Vec::new();
+/// The `data` of every `PtyInput` that has reached the shepherd, in order.
+fn batches(envelopes: &mut mpsc::UnboundedReceiver<Envelope>) -> Vec<Vec<u8>> {
+    let mut batches = Vec::new();
     while let Ok(envelope) = envelopes.try_recv() {
         if let Request::PtyInput { data, .. } = envelope.body {
-            bytes.extend_from_slice(&data);
+            batches.push(data);
         }
     }
-    bytes
+    batches
+}
+
+/// The bytes of every `PtyInput` that has reached the shepherd.
+fn typed(envelopes: &mut mpsc::UnboundedReceiver<Envelope>) -> Vec<u8> {
+    batches(envelopes).concat()
 }
 
 #[tokio::test]
@@ -141,6 +149,67 @@ async fn the_detach_key_cuts_what_is_sent_at_that_byte() {
 
     assert_eq!(code, ExitCode::Success);
     assert_eq!(typed(&mut envelopes), [0x1b, b'M', 0xe8]);
+}
+
+/// A read bigger than one `PtyInput` may carry goes as several requests, in
+/// order, rather than one frame the wire refuses.
+#[tokio::test]
+async fn a_paste_over_the_wire_cap_reaches_the_shepherd_in_pieces() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) = accepting(dir.path()).await;
+    let (tty, keys, _resizes) = tty();
+
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+    let paste: Vec<u8> = vec![0xff; MAX_INPUT_BYTES + 4096];
+    let driver = async {
+        keys.send(paste.clone()).await.unwrap();
+        keys.send(vec![DETACH_KEY]).await.unwrap();
+    };
+    let (code, ()) = tokio::time::timeout(BOUND, async {
+        tokio::join!(session(&client, &mut streams, "web", tty), driver)
+    })
+    .await
+    .expect("the session must end once the detach key is read");
+
+    assert_eq!(code, ExitCode::Success);
+    let sent = batches(&mut envelopes);
+    assert_eq!(
+        sent.iter().map(Vec::len).collect::<Vec<usize>>(),
+        [MAX_INPUT_BYTES, 4096],
+        "no batch may exceed the cap"
+    );
+    let sent = sent.concat();
+    assert_eq!(sent.len(), paste.len());
+    assert!(
+        sent.iter()
+            .zip(paste.iter())
+            .all(|(sent, pasted)| sent == pasted),
+        "the paste arrived out of order or with bytes missing"
+    );
+}
+
+#[test]
+fn a_batch_at_the_cap_encodes_under_the_frame_limit() {
+    // 0xff is the widest a byte goes: three digits and a comma.
+    let mut queued: VecDeque<u8> = vec![0xff_u8; MAX_INPUT_BYTES].into();
+    let Request::PtyInput { name, data } = input("web", &mut queued) else {
+        panic!("`input` builds a `PtyInput`");
+    };
+    assert_eq!(data.len(), MAX_INPUT_BYTES);
+    assert!(queued.is_empty());
+
+    let frame = encode_frame(&Envelope {
+        id: 1,
+        deadline_ms: None,
+        body: Request::PtyInput { name, data },
+    })
+    .unwrap();
+    assert!(
+        frame.len() < MAX_FRAME_BYTES,
+        "the frame is {} bytes",
+        frame.len()
+    );
 }
 
 /// The keys a session read before stdin closed are not lost with it.
