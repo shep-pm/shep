@@ -195,9 +195,9 @@ mod tests {
 
     /// A handle, and the receiver whose drop closes it.
     fn handle() -> (PtyHandle, mpsc::Receiver<PtyCommand>) {
-        let (output, _) = broadcast::channel(1);
+        let output = Arc::new(broadcast::channel(1).0);
         let (control, commands) = mpsc::channel(1);
-        let handle = PtyHandle::new(output, control, Arc::new(AtomicBool::new(false)));
+        let handle = PtyHandle::new(&output, control, Arc::new(AtomicBool::new(false)));
         (handle, commands)
     }
 

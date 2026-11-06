@@ -10,7 +10,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use shep_core::signals::OperatorSignal;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Typed stop signal
@@ -143,7 +143,7 @@ impl core::error::Error for PtyError {}
 /// fails with [`PtyError::Gone`] once the sheep is gone.
 #[derive(Debug, Clone)]
 pub struct PtyHandle {
-    output: broadcast::Sender<Bytes>,
+    output: Weak<broadcast::Sender<Bytes>>,
     control: mpsc::Sender<PtyCommand>,
     closed: Arc<AtomicBool>,
 }
@@ -152,13 +152,15 @@ impl PtyHandle {
     /// Builds a handle over the runner's end of the three.
     ///
     /// `closed` is set by whoever reads the master once the terminal ends.
+    /// The handle holds `output` weakly: the reader owns the sender, so the
+    /// channel closes, and a subscriber's `recv` ends, when the reader does.
     pub(crate) fn new(
-        output: broadcast::Sender<Bytes>,
+        output: &Arc<broadcast::Sender<Bytes>>,
         control: mpsc::Sender<PtyCommand>,
         closed: Arc<AtomicBool>,
     ) -> Self {
         Self {
-            output,
+            output: Arc::downgrade(output),
             control,
             closed,
         }
@@ -167,12 +169,15 @@ impl PtyHandle {
     /// A receiver of what the child writes to its terminal from now on: the
     /// raw bytes, escape codes and all, as chunked by the reads.
     ///
-    /// Nothing is kept for a moment when no receiver exists, so a new one
-    /// sees no earlier output. A receiver that falls behind loses the oldest
-    /// chunks, as [`broadcast::Receiver::recv`] says.
+    /// A new receiver sees no earlier output, and one that falls behind loses
+    /// the oldest chunks, as [`broadcast::Receiver::recv`] says. Once the
+    /// terminal has closed, `recv` fails with `Closed` after the last chunk.
     #[must_use]
     pub fn subscribe(&self) -> broadcast::Receiver<Bytes> {
-        self.output.subscribe()
+        match self.output.upgrade() {
+            Some(output) => output.subscribe(),
+            None => broadcast::channel(1).1,
+        }
     }
 
     /// Types `bytes` into the terminal as they are.

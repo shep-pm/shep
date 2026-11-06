@@ -1,6 +1,7 @@
 //! A sheep's pseudo-terminal: the pair a `pty = true` child runs on, the
 //! master's reader, and the task that types into it.
 
+use core::future::poll_fn;
 use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll, ready};
@@ -16,7 +17,7 @@ use rustix::fs::{self, Mode, OFlags};
 use rustix::pty;
 use rustix::termios::{self, LocalModes, Winsize};
 use tokio::io::unix::AsyncFd;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::unix::pipe::Receiver;
 use tokio::process::{ChildStdout, Command};
 use tokio::sync::{broadcast, mpsc};
@@ -192,7 +193,7 @@ impl AsyncRead for Stdout {
 impl PtyMaster {
     /// The master as an [`AsyncRead`] of what the child wrote, each chunk
     /// copied to `tap` first while anyone listens.
-    pub(super) fn into_reader(self, tap: broadcast::Sender<Bytes>) -> PtyReader {
+    pub(super) fn into_reader(self, tap: Arc<broadcast::Sender<Bytes>>) -> PtyReader {
         PtyReader { master: self, tap }
     }
 
@@ -200,6 +201,7 @@ impl PtyMaster {
     pub(super) fn writer(&self) -> PtyWriter {
         PtyWriter {
             fd: Arc::clone(&self.fd),
+            pending: 0,
         }
     }
 }
@@ -214,9 +216,9 @@ const PTY_TAP_CAPACITY: usize = 64;
 /// Returns what the log pump reads, and the handle. Must run inside a tokio
 /// runtime.
 pub(super) fn wire(master: PtyMaster, whispers: mpsc::Receiver<StdinWrite>) -> (Stdout, PtyHandle) {
-    let (tap, _) = broadcast::channel(PTY_TAP_CAPACITY);
+    let tap = Arc::new(broadcast::channel(PTY_TAP_CAPACITY).0);
     let (control, commands) = mpsc::channel(CHANNEL_CAPACITY);
-    let handle = PtyHandle::new(tap.clone(), control, Arc::clone(&master.closed));
+    let handle = PtyHandle::new(&tap, control, Arc::clone(&master.closed));
     spawn_pty_pump(master.writer(), whispers, commands);
     let stdout = Stdout::Terminal(AnsiLines::new(master.into_reader(tap)));
     (stdout, handle)
@@ -273,6 +275,9 @@ fn within_terminal_buffer(len: usize) -> io::Result<()> {
 /// [`PTY_WRITE_MAX`] is refused unwritten.
 pub(super) struct PtyWriter {
     fd: Arc<AsyncFd<OwnedFd>>,
+    /// Bytes typed since the last line end, which a cooked terminal still
+    /// holds as one unfinished line.
+    pending: usize,
 }
 
 impl PtyWriter {
@@ -295,31 +300,76 @@ impl PtyWriter {
 
     /// Writes `bytes` in pieces a terminal holds, with no terminator.
     ///
-    /// A cooked terminal keeps what is typed until a newline in one buffer
-    /// and drops the rest, so a line over [`PTY_WRITE_MAX`] there is refused
-    /// before any byte is written. A raw terminal hands bytes to the child as
+    /// Refused before any byte is written if a cooked terminal would cut it
+    /// (see [`Self::check_line`]). A raw terminal hands bytes to the child as
     /// they come, so the pieces go through whatever their length.
     async fn write_raw(&mut self, bytes: &[u8]) -> Result<(), PtyError> {
-        let cooked = termios::tcgetattr(self.fd.get_ref())
-            .map_err(|error| PtyError::Failed(error.to_string()))?
-            .local_modes
-            .contains(LocalModes::ICANON);
-        if cooked {
-            // `\r` ends a line too: the default input flags turn it into `\n`.
-            let longest = bytes
-                .split_inclusive(|byte| matches!(byte, b'\n' | b'\r'))
-                .map(<[u8]>::len)
-                .max()
-                .unwrap_or(0);
-            within_terminal_buffer(longest).map_err(|error| PtyError::Failed(error.to_string()))?;
-        }
-        for piece in bytes.chunks(PTY_WRITE_MAX) {
-            self.write_all(piece)
+        self.check_line(bytes)
+            .map_err(|error| PtyError::Failed(error.to_string()))?;
+        let mut rest = bytes;
+        while !rest.is_empty() {
+            let piece = &rest[..rest.len().min(PTY_WRITE_MAX)];
+            let wrote = poll_fn(|cx| self.poll_put(cx, piece))
                 .await
                 .map_err(|error| PtyError::Failed(error.to_string()))?;
+            rest = &rest[wrote..];
         }
         Ok(())
     }
+
+    /// Refuses `bytes` if a cooked terminal would drop part of them.
+    ///
+    /// A cooked terminal keeps what is typed in one buffer until a newline
+    /// and drops what goes past it, so the line `bytes` ends, with whatever
+    /// earlier writes left unterminated in `pending`, must fit
+    /// [`PTY_WRITE_MAX`], and so must each later line in `bytes`. A raw
+    /// terminal keeps no line, so there is nothing to count.
+    fn check_line(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let cooked = termios::tcgetattr(self.fd.get_ref())?
+            .local_modes
+            .contains(LocalModes::ICANON);
+        if !cooked {
+            self.pending = 0;
+            return Ok(());
+        }
+        let longest = bytes
+            .split_inclusive(|byte| ends_line(*byte))
+            .enumerate()
+            .map(|(index, line)| line.len() + if index == 0 { self.pending } else { 0 })
+            .max()
+            .unwrap_or(0);
+        within_terminal_buffer(longest)
+    }
+
+    /// One write to the master, with no check, noting what it leaves
+    /// unterminated.
+    fn poll_put(&mut self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        loop {
+            let mut ready = ready!(self.fd.poll_write_ready(cx))?;
+            let wrote =
+                ready.try_io(|fd| rustix::io::write(fd.get_ref(), buf).map_err(io::Error::from));
+            if let Ok(result) = wrote {
+                if let Ok(count) = result {
+                    self.note_typed(&buf[..count]);
+                }
+                return Poll::Ready(result);
+            }
+        }
+    }
+
+    /// Tracks the bytes a cooked terminal now holds as an unfinished line.
+    fn note_typed(&mut self, typed: &[u8]) {
+        self.pending = match typed.iter().rposition(|byte| ends_line(*byte)) {
+            Some(end) => typed.len() - end - 1,
+            None => self.pending + typed.len(),
+        };
+    }
+}
+
+/// Whether a cooked terminal reads `byte` as the end of a line: `\r` too, as
+/// the default input flags turn it into `\n`.
+fn ends_line(byte: u8) -> bool {
+    matches!(byte, b'\n' | b'\r')
 }
 
 impl AsyncWrite for PtyWriter {
@@ -330,14 +380,8 @@ impl AsyncWrite for PtyWriter {
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
         within_terminal_buffer(buf.len())?;
-        loop {
-            let mut ready = ready!(this.fd.poll_write_ready(cx))?;
-            let wrote =
-                ready.try_io(|fd| rustix::io::write(fd.get_ref(), buf).map_err(io::Error::from));
-            if let Ok(result) = wrote {
-                return Poll::Ready(result);
-            }
-        }
+        this.check_line(buf)?;
+        this.poll_put(cx, buf)
     }
 
     /// A write to the master is already with the line discipline.
@@ -355,7 +399,9 @@ impl AsyncWrite for PtyWriter {
 /// last slave descriptor closes.
 pub(super) struct PtyReader {
     master: PtyMaster,
-    tap: broadcast::Sender<Bytes>,
+    /// The only strong owner of the sender, so a handle's subscribers see the
+    /// stream end when this drops.
+    tap: Arc<broadcast::Sender<Bytes>>,
 }
 
 impl PtyReader {
@@ -441,7 +487,7 @@ mod tests {
     #[tokio::test]
     async fn a_master_hands_back_what_its_slave_wrote_and_then_ends() {
         let (master, slave) = open().unwrap();
-        let mut reader = master.into_reader(broadcast::channel(1).0);
+        let mut reader = master.into_reader(Arc::new(broadcast::channel(1).0));
         rustix::io::write(&slave, WRITTEN).unwrap();
 
         let mut buf = [0u8; 64];
@@ -485,7 +531,7 @@ mod tests {
         timeout(
             MASTER_DEADLINE,
             master
-                .into_reader(broadcast::channel(1).0)
+                .into_reader(Arc::new(broadcast::channel(1).0))
                 .read_to_end(&mut seen),
         )
         .await

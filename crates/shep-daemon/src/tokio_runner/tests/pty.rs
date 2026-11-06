@@ -11,6 +11,7 @@ use crate::runner::{
     ProcIo, ProcessRunner, PtyError, PtyHandle, RunnerError, RunningProcess, SpawnSpec, StdinWrite,
 };
 use tokio::sync::broadcast::Receiver;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::oneshot;
 
 /// A spec that runs `script` under `/bin/sh` on a terminal.
@@ -370,6 +371,30 @@ async fn a_cooked_terminal_refuses_raw_input_it_would_cut() {
 }
 
 #[tokio::test]
+async fn an_unfinished_line_counts_across_sends_and_whispers() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut proc, io) = a_sheep_that_stays_up(&dir);
+    let handle = handle_of(&io);
+
+    handle.send(vec![b'x'; 600]).await.unwrap();
+    let second = handle.send(vec![b'y'; 600]).await;
+    assert!(
+        matches!(&second, Err(PtyError::Failed(why)) if why.contains("1200")),
+        "the first 600 bytes are still held, so the next 600 must be refused: {second:?}"
+    );
+    let whisper = try_whisper(&io, &"z".repeat(600)).await;
+    assert!(
+        matches!(&whisper, Err(RunnerError::WriteFailed(why)) if why.contains("1201")),
+        "a whisper lands on the same unfinished line: {whisper:?}"
+    );
+
+    // A newline ends the line, so the count starts over.
+    handle.send(b"\n".to_vec()).await.unwrap();
+    handle.send(vec![b'y'; 600]).await.unwrap();
+    proc.kill_tree().unwrap();
+}
+
+#[tokio::test]
 async fn a_raw_terminal_takes_raw_input_of_any_length() {
     let dir = tempfile::tempdir().unwrap();
     let (mut proc, io) = TokioRunner::new()
@@ -402,6 +427,29 @@ async fn a_handle_fails_after_the_sheep_exits() {
 
     assert_eq!(handle.send(b"x".to_vec()).await, Err(PtyError::Gone));
     assert_eq!(handle.resize(24, 80).await, Err(PtyError::Gone));
+}
+
+#[tokio::test]
+async fn a_subscriber_sees_the_stream_end_while_a_handle_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut proc, io) = TokioRunner::new()
+        .spawn(&pty_spec(&dir, "sleep 1; echo bye"))
+        .unwrap();
+    let handle = handle_of(&io);
+    let mut rx = handle.subscribe();
+
+    timeout(PUMP_DEADLINE, async {
+        while let Ok(_) | Err(RecvError::Lagged(_)) = rx.recv().await {}
+    })
+    .await
+    .expect("recv must end once the terminal closes, though the handle lives");
+    assert!(matches!(
+        handle.subscribe().recv().await,
+        Err(RecvError::Closed)
+    ));
+    timeout(PUMP_DEADLINE, proc.wait())
+        .await
+        .expect("the script must exit");
 }
 
 #[tokio::test]

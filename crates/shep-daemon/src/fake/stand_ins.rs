@@ -40,13 +40,16 @@ pub(super) fn open_reportable_fds() -> ([std::fs::File; 6], crate::handover::Car
 ///
 /// Needs a tokio runtime, as the rest of a spawn does.
 pub(super) fn quiet_pty() -> PtyHandle {
-    let (output, _) = broadcast::channel(1);
+    let output = Arc::new(broadcast::channel(1).0);
     let (control, mut commands) = mpsc::channel(super::scripted_runner::CHANNEL_CAPACITY);
+    let handle = PtyHandle::new(&output, control, Arc::new(AtomicBool::new(false)));
     tokio::spawn(async move {
+        // Owns the sender, as a real terminal's reader does.
+        let _output = output;
         while let Some(command) = commands.recv().await {
             let (PtyCommand::Input { done, .. } | PtyCommand::Resize { done, .. }) = command;
             let _ = done.send(Ok(()));
         }
     });
-    PtyHandle::new(output, control, Arc::new(AtomicBool::new(false)))
+    handle
 }
