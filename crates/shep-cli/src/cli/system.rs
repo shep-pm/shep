@@ -21,7 +21,7 @@ use super::Init;
 #[derive(Debug, clap::Args)]
 pub struct StartupArgs {
     /// The user the unit runs the shepherd as (default: $SUDO_USER, else the invoking user)
-    #[arg(long)]
+    #[arg(short = 'u', long)]
     pub user: Option<String>,
     /// Write a unit for this init system instead of the detected one.
     ///
@@ -157,7 +157,7 @@ pub struct InitArgs {
     #[arg(value_name = "PATH")]
     pub path: Option<PathBuf>,
     /// Show every option the grammar has, not just the common ones
-    #[arg(long)]
+    #[arg(short = 'a', long)]
     pub all: bool,
     /// Overwrite the Flockfile that is already here, keeping its own format
     #[arg(long)]
@@ -187,7 +187,7 @@ pub struct DevArgs {
     /// Script or Flockfile to run (default: discovered in this directory)
     pub target: Option<String>,
     /// Name for this sheep (script form only)
-    #[arg(long)]
+    #[arg(short = 'n', long)]
     pub name: Option<String>,
 }
 

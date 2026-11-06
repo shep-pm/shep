@@ -184,6 +184,26 @@ A dog's `[<dog>]` section is the value for every sheep it serves, and a sheep's 
 
 `issue #1428; verified crates/shep-client/src/dogs/sheep_settings.rs, crates/shep-core/src/dogs/manifest.rs and crates/shep-macros/src/lib.rs`
 
+### A flag's short letter names one long flag across the whole CLI, and the global flags stay long
+
+48 of the 79 flags on visible verbs take a one-letter short, using 23 letters. A letter names one long flag on every verb that has that flag, so `-n` is `--name` on `start`, `add`, `serve`, `adopt` and `dev`, and nowhere else. A flag takes its first letter, lowercase. When that is taken it takes the capital. When both are taken, or the flag is rarely typed, it stays long only. Each is written `short = 'x'`, never bare `short`, which reads the field's first letter: `no_follow` would get `-n`, and a field rename would move the letter.
+
+Left long on purpose, beyond the flags with no letter free:
+
+- `--force`: `-f` is `--follow`, and an overwrite is worth spelling out.
+- `--interpreter`: pm2's `-i` is `--instances`, so `shep start app.js -i 4` stays an error rather than setting an interpreter.
+- `--listing`, `--hidden`, `--follow-symlinks` and `--auth` on `serve`: they change what is published or who can reach it.
+- `--init` on `startup` and `unstartup`: run once per machine.
+- `--format`, `--host`, `--style` and `--home`: see below.
+
+`-l` is `--lines` on `bleats`, not `-n` as in `tail` and `docker logs`, because `-n` is `--name` and agrees with pm2. `shep bleats -f` stays a usage error: `bleats` follows by default and has no `--follow`. `-y` covers `--yes` everywhere it exists, including `enable`, `install` and `adopt`, where it grants everything a dog declares. `infer_long_args` stays off, since a later flag sharing a prefix would break a script that typed the shorter one.
+
+**Why:** #1585. clap does this natively and parses nothing new: no arg sets `allow_hyphen_values` or `trailing_var_arg`, so every `-x` was a usage error and no accepted argv changed meaning. clap checks a letter clash only inside one command, so `cli::help::tests::a_short_flag_names_one_long_flag_across_the_tree` walks the whole tree. The global flags keep their long forms and `-q` stays the only global short, because a global short takes its letter from every verb, and `home_before`, `style_before`, `host_before` and `format_before` in `adopted.rs`, `names_another_shepherd` in `home.rs` and `help_verb_precedes` in `adopted_help.rs` read the long forms by hand before clap runs. `host_before` is how a dog verb refuses `--host`: a `-H` it could not see would run the dog on this machine.
+
+**What it costs:** a letter is fixed once shipped, so a flag added later takes whatever is free, and the table in the tests grows with it. `-f` means `--follow` on `flock` and is an error on `bleats`, which a habit from `tail` will hit.
+
+`issue #1585; verified crates/shep-cli/src/cli/help.rs (a_short_flag_names_one_long_flag_across_the_tree, a_short_flag_parses_as_its_long_form, the_letters_left_out_stay_usage_errors)`
+
 ## Supervision and lifecycle
 
 ### A memory breach self-disarms the id it reports

@@ -799,4 +799,180 @@ mod tests {
         let rest = template[at + name.len()..].trim_start_matches(' ');
         assert!(rest.starts_with("exports traces"), "got {rest:?}");
     }
+
+    /// Every short flag in the tree, built so the globals reach each verb,
+    /// mapped to the long flags that carry it and the verbs that have each.
+    fn shorts_in_tree() -> std::collections::BTreeMap<char, std::collections::BTreeSet<String>> {
+        fn walk(
+            command: &clap::Command,
+            found: &mut std::collections::BTreeMap<char, std::collections::BTreeSet<String>>,
+        ) {
+            for arg in command.get_arguments() {
+                if let Some(short) = arg.get_short() {
+                    found
+                        .entry(short)
+                        .or_default()
+                        .insert(arg.get_long().unwrap_or(arg.get_id().as_str()).to_owned());
+                }
+            }
+            for sub in command.get_subcommands() {
+                walk(sub, found);
+            }
+        }
+        use clap::CommandFactory;
+        let mut command = Cli::command();
+        command.build();
+        let mut found = std::collections::BTreeMap::new();
+        walk(&command, &mut found);
+        found
+    }
+
+    /// clap's `debug_assert` only sees a clash inside one command, so a letter
+    /// meaning `--follow` on one verb and `--fold` on another passes it.
+    #[test]
+    fn a_short_flag_names_one_long_flag_across_the_tree() {
+        for (short, longs) in shorts_in_tree() {
+            assert_eq!(longs.len(), 1, "-{short} names {longs:?}");
+        }
+    }
+
+    #[test]
+    fn quiet_is_the_only_global_flag_with_a_short() {
+        use clap::CommandFactory;
+        let command = Cli::command();
+        let shorts: Vec<_> = command
+            .get_arguments()
+            .filter(|arg| arg.is_global_set())
+            .filter_map(|arg| arg.get_short().map(|short| (short, arg.get_id().as_str())))
+            .collect();
+        assert_eq!(shorts, [('q', "quiet")]);
+    }
+
+    /// Each letter, with a sample command it parses on, beside the long form.
+    const SHORT_FORMS: &[(char, &[&str], &[&str])] = &[
+        ('a', &["kv", "unset", "-a"], &["kv", "unset", "--all"]),
+        ('A', &["dogs", "-A"], &["dogs", "--available"]),
+        (
+            'b',
+            &["serve", "www", "-b", "0.0.0.0"],
+            &["serve", "www", "--bind", "0.0.0.0"],
+        ),
+        (
+            'c',
+            &["start", "app.js", "-c", "/tmp"],
+            &["start", "app.js", "--cwd", "/tmp"],
+        ),
+        (
+            'd',
+            &["set", "web.restart_delay", "1", "-d"],
+            &["set", "web.restart_delay", "1", "--dry-run"],
+        ),
+        ('D', &["upgrade", "-D"], &["upgrade", "--dogs"]),
+        ('e', &["bleats", "-e"], &["bleats", "--err"]),
+        (
+            'E',
+            &["secret", "get", "K", "-E", "prod"],
+            &["secret", "get", "K", "--env", "prod"],
+        ),
+        ('f', &["flock", "-f"], &["flock", "--follow"]),
+        (
+            'F',
+            &["start", "app.js", "-F", "web"],
+            &["start", "app.js", "--fold", "web"],
+        ),
+        (
+            'i',
+            &["flock", "-f", "-i", "5"],
+            &["flock", "--follow", "--interval", "5"],
+        ),
+        ('l', &["bleats", "-l", "5"], &["bleats", "--lines", "5"]),
+        (
+            'n',
+            &["start", "app.js", "-n", "api"],
+            &["start", "app.js", "--name", "api"],
+        ),
+        ('N', &["bleats", "-N"], &["bleats", "--no-follow"]),
+        ('o', &["bleats", "-o"], &["bleats", "--out"]),
+        (
+            'p',
+            &["serve", "www", "-p", "9000"],
+            &["serve", "www", "--port", "9000"],
+        ),
+        (
+            'r',
+            &["dogs", "-A", "-r"],
+            &["dogs", "--available", "--refresh"],
+        ),
+        ('R', &["lookout", "-R"], &["lookout", "--read-only"]),
+        (
+            's',
+            &["secret", "set", "K", "-s"],
+            &["secret", "set", "K", "--stdin"],
+        ),
+        ('S', &["serve", "www", "-S"], &["serve", "www", "--spa"]),
+        ('t', &["barks", "-t", "5"], &["barks", "--tail", "5"]),
+        (
+            'u',
+            &["startup", "-u", "root"],
+            &["startup", "--user", "root"],
+        ),
+        ('y', &["enable", "otel", "-y"], &["enable", "otel", "--yes"]),
+    ];
+
+    fn parsed(args: &[&str]) -> String {
+        use clap::Parser;
+        let argv = std::iter::once("shep").chain(args.iter().copied());
+        match Cli::try_parse_from(argv) {
+            Ok(cli) => format!("{cli:?}"),
+            Err(error) => panic!("{args:?} did not parse: {error}"),
+        }
+    }
+
+    #[test]
+    fn a_short_flag_parses_as_its_long_form() {
+        for (short, with_short, with_long) in SHORT_FORMS {
+            assert_eq!(parsed(with_short), parsed(with_long), "-{short}");
+        }
+        let letters: Vec<char> = SHORT_FORMS.iter().map(|row| row.0).collect();
+        let in_tree: Vec<char> = shorts_in_tree()
+            .into_keys()
+            .filter(|short| !matches!(short, 'q' | 'h' | 'V'))
+            .collect();
+        let mut sorted = letters.clone();
+        sorted.sort_unstable();
+        assert_eq!(
+            sorted, in_tree,
+            "the table covers every letter the tree has"
+        );
+        assert_eq!(letters.len(), 23);
+    }
+
+    #[test]
+    fn short_flags_cluster_and_attach_their_values() {
+        assert_eq!(
+            parsed(&["set", "web.restart_delay", "1", "-dy"]),
+            parsed(&["set", "web.restart_delay", "1", "--dry-run", "--yes"]),
+        );
+        assert_eq!(
+            parsed(&["start", "app.js", "-napi"]),
+            parsed(&["start", "app.js", "--name", "api"]),
+        );
+    }
+
+    #[test]
+    fn the_letters_left_out_stay_usage_errors() {
+        use clap::Parser;
+        for argv in [
+            ["shep", "start", "app.js", "-i", "4"].as_slice(),
+            ["shep", "bleats", "-f"].as_slice(),
+            ["shep", "init", "-f"].as_slice(),
+        ] {
+            let error = Cli::try_parse_from(argv).expect_err("a usage error");
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::UnknownArgument,
+                "{argv:?}"
+            );
+        }
+    }
 }

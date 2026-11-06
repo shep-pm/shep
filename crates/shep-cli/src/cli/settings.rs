@@ -36,10 +36,10 @@ pub struct SetArgs {
     /// that is not TOML is the string as typed, such as `3s`
     pub value: String,
     /// Print what would change and write nothing
-    #[arg(long)]
+    #[arg(short = 'd', long)]
     pub dry_run: bool,
     /// Write without asking
-    #[arg(long)]
+    #[arg(short = 'y', long)]
     pub yes: bool,
 }
 
@@ -56,10 +56,10 @@ pub struct UnsetArgs {
     /// `api.max_memory`, `api.dogs.kelpie.git`, or `kelpie.worker.timeout`
     pub address: String,
     /// Print what would change and write nothing
-    #[arg(long)]
+    #[arg(short = 'd', long)]
     pub dry_run: bool,
     /// Write without asking
-    #[arg(long)]
+    #[arg(short = 'y', long)]
     pub yes: bool,
 }
 

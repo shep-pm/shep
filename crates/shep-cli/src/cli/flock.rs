@@ -35,7 +35,7 @@ pub struct FlockArgs {
     /// follow's whole reason is the moments after it. Needs a terminal
     /// too, and refuses `--format json`, since neither has anywhere to put
     /// a redraw.
-    #[arg(long, action = clap::ArgAction::SetTrue)]
+    #[arg(short = 'f', long, action = clap::ArgAction::SetTrue)]
     pub follow: bool,
     /// Seconds between redraws, with `--follow`
     ///
@@ -43,6 +43,7 @@ pub struct FlockArgs {
     /// listing costs the shepherd more than it tells the operator, and
     /// `sysinfo` reports no CPU at all over a window that short.
     #[arg(
+        short = 'i',
         long,
         default_value_t = FOLLOW_INTERVAL_FLOOR_SECONDS,
         value_name = "SECONDS",
@@ -108,7 +109,7 @@ struct CatalogueSpec {
     /// The same gate `shep lookout --read-only` closes and the same one
     /// `shep kv set lookout.allow_control false` closes: `x` (stop), `R`
     /// (restart) and `L` (reload) each refuse outright with it closed.
-    #[arg(long)]
+    #[arg(short = 'R', long)]
     read_only: bool,
 }
 
@@ -147,7 +148,7 @@ struct LookoutSpec {
     /// security boundary: lookout runs as you, so anything it could do you can
     /// already do with `shep stop`. Can also be closed with `shep kv set
     /// lookout.allow_control false`.
-    #[arg(long)]
+    #[arg(short = 'R', long)]
     read_only: bool,
     /// Open on one sheep's own screen
     ///
