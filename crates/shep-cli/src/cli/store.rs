@@ -48,11 +48,11 @@ pub enum SecretCommand {
         #[arg(required_unless_present = "stdin", conflicts_with = "stdin")]
         value: Option<String>,
         /// Which environment; omit for every environment
-        #[arg(long)]
+        #[arg(short = 'E', long)]
         env: Option<String>,
         /// Read the value from stdin; the positional form is visible in
         /// `ps` and in shell history
-        #[arg(long)]
+        #[arg(short = 's', long)]
         stdin: bool,
     },
     /// Print a value back, if `[secrets] allow_read` is on
@@ -61,7 +61,7 @@ pub enum SecretCommand {
         key: String,
         /// Which environment; omit to use `[daemon] environment`'s
         /// default, which an app's own environment may override
-        #[arg(long)]
+        #[arg(short = 'E', long)]
         env: Option<String>,
     },
     /// Remove a value
@@ -69,7 +69,7 @@ pub enum SecretCommand {
         /// The key
         key: String,
         /// Which environment; omit for the every-environment slot
-        #[arg(long)]
+        #[arg(short = 'E', long)]
         env: Option<String>,
     },
     /// List keys and the environments each has a value for

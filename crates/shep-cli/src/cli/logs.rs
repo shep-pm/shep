@@ -34,7 +34,7 @@ pub struct FlushArgs {
 #[derive(Debug, clap::Args)]
 pub struct BarksArgs {
     /// Show only the last N barks
-    #[arg(long)]
+    #[arg(short = 't', long)]
     pub tail: Option<usize>,
 }
 
@@ -60,7 +60,7 @@ pub struct BleatsArgs {
     #[arg(default_value = DEFAULT_SELECTOR)]
     pub selector: String,
     /// Print the tail of each sheep's log file and exit, instead of following
-    #[arg(long)]
+    #[arg(short = 'N', long)]
     pub no_follow: bool,
     /// How many existing lines of each stream to print before following
     ///
@@ -73,13 +73,13 @@ pub struct BleatsArgs {
     /// it with `--out` or `--err`.
     ///
     /// `0` prints no history at all, following only what arrives next.
-    #[arg(long, default_value_t = DEFAULT_BLEAT_LINES, value_name = "N")]
+    #[arg(short = 'l', long, default_value_t = DEFAULT_BLEAT_LINES, value_name = "N")]
     pub lines: usize,
     /// Only stderr
-    #[arg(long, conflicts_with = "out")]
+    #[arg(short = 'e', long, conflicts_with = "out")]
     pub err: bool,
     /// Only stdout
-    #[arg(long, conflicts_with = "err")]
+    #[arg(short = 'o', long, conflicts_with = "err")]
     pub out: bool,
 }
 
