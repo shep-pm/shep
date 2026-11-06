@@ -1,6 +1,8 @@
 //! A `pty = true` sheep on a real pseudo-terminal: what the child finds on
 //! its descriptors, and what reaches the log.
 
+use std::time::Duration;
+
 use nix::unistd::{Pid, getpgid, getsid};
 use tokio::time::timeout;
 
@@ -512,21 +514,34 @@ async fn no_receiver_means_no_copy() {
 async fn a_pty_sheep_exits_and_logs_every_line_with_the_logs_channel_full() {
     const LINES: usize = CHANNEL_CAPACITY + 8;
     let dir = tempfile::tempdir().unwrap();
+    let out_path = dir.path().join("out.log");
     let script =
         format!("i=1; while [ $i -le {LINES} ]; do echo \"line-$i\"; i=$((i+1)); done; echo LAST");
-    let (mut proc, _io) = TokioRunner::new().spawn(&pty_spec(&dir, &script)).unwrap();
-    // `_io` is held and its `logs` receiver is never read, which is what a
+    let (mut proc, io) = TokioRunner::new().spawn(&pty_spec(&dir, &script)).unwrap();
+    // `io` is held and its `logs` receiver is never read, which is what a
     // sheep task parked in `kill_process` does to a pump.
     timeout(PUMP_DEADLINE, proc.wait())
         .await
         .expect("the sheep must exit with nobody reading its live log bus");
 
+    // `wait` answers for the child, not for its pump, and the pump is what
+    // writes the file, `LIVE_WAIT` after the line that fills `logs`. A pump
+    // drops its control receiver only as it ends, after its final flush, so
+    // a closed `log_ctl` is the barrier that every line has been written.
+    let ended = timeout(PUMP_DEADLINE, async {
+        while !io.log_ctl.is_closed() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    assert!(
+        ended.is_ok(),
+        "a pty pump must come back to its master and end rather than park on a full `logs`"
+    );
+
     // By content, not by a line count: a count cannot say which line a pump
     // lost, and a terminal can add lines of its own.
-    let logged: Vec<String> = log_text(&dir.path().join("out.log"))
-        .lines()
-        .map(str::to_string)
-        .collect();
+    let logged: Vec<String> = log_text(&out_path).lines().map(str::to_string).collect();
     let missing: Vec<String> = (1..=LINES)
         .map(|n| format!("line-{n}"))
         .chain(std::iter::once("LAST".to_string()))
