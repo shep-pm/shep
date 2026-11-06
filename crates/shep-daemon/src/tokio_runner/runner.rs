@@ -494,7 +494,7 @@ impl ProcessRunner for TokioRunner {
         }
         let (to_stdin, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
         if let Some(stdin_pipe) = stdin_pipe {
-            spawn_stdin_pump(Some(stdin_pipe), to_stdin_rx);
+            spawn_stdin_pump(Some(stdin_pipe), b'\n', to_stdin_rx);
         } else {
             drop(to_stdin_rx);
         }
@@ -881,9 +881,12 @@ impl ProcessRunner for TokioRunner {
         #[cfg(not(unix))]
         let pipes = PipeFds;
         #[cfg(unix)]
-        let stdout = match pty_master {
-            Some(master) => Some(Stdout::terminal(master)),
-            None => child.stdout.take().map(Stdout::Pipe),
+        let (stdout, pty_writer) = match pty_master {
+            Some(master) => {
+                let writer = master.writer();
+                (Some(Stdout::terminal(master)), Some(writer))
+            }
+            None => (child.stdout.take().map(Stdout::Pipe), None),
         };
         #[cfg(windows)]
         let stdout = child.stdout.take();
@@ -899,8 +902,14 @@ impl ProcessRunner for TokioRunner {
         );
 
         let (to_stdin_tx, to_stdin_rx) = mpsc::channel(CHANNEL_CAPACITY);
-        if spec.stdin && !spec.pty {
-            spawn_stdin_pump(child.stdin.take(), to_stdin_rx);
+        #[cfg(windows)]
+        let pty_writer: Option<tokio::io::Sink> = None;
+        if let Some(writer) = pty_writer {
+            // Enter sends a carriage return, which a cooked terminal turns
+            // into the newline the program reads.
+            spawn_stdin_pump(Some(writer), b'\r', to_stdin_rx);
+        } else if spec.stdin {
+            spawn_stdin_pump(child.stdin.take(), b'\n', to_stdin_rx);
         } else {
             // Dropped rather than dangling, so a caller's `is_closed()` says
             // "no pipe here" at once.

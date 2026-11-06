@@ -108,6 +108,7 @@ const fieldGroups: FieldGroup[] = [
       { name: "wait_ready", type: "bool", default: "false", does: "Expect {\"kind\":\"ready\"} on the shepherd channel before treating the sheep as up." },
       { name: "channel", type: "bool", default: "false", does: "Open the shepherd channel on fd 3, even without wait_ready or shutdown_with_message." },
       { name: "stdin", type: "bool", default: "false", does: "Open a pipe on the sheep's stdin so shep whisper can write to it." },
+      { name: "pty", type: "bool", default: "false", does: "Run the sheep on a pseudo-terminal: its fd 0, 1 and 2 are a terminal, so a program that checks isatty prints colour and prompts. Its output is logged as plain lines on stdout, and the stderr file stays empty. shep whisper types a line into it without stdin = true. Unix only: refused on Windows." },
       { name: "action_timeout", type: "duration", default: "3s", does: "How long a triggered action gets to answer before it's TimedOut." },
     ],
   },

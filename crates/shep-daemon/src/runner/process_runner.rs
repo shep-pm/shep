@@ -81,7 +81,8 @@ pub struct ProcIo {
 /// written and flushed.
 #[derive(Debug)]
 pub struct StdinWrite {
-    /// The line, without its terminator: the writer appends one `\n`.
+    /// The line, without its terminator: the writer appends one, `\n` for a
+    /// pipe and `\r` for a terminal.
     pub line: String,
     /// Fires once the line has landed, or with why it could not.
     ///
@@ -211,7 +212,8 @@ pub struct SpawnSpec {
     pub channel: bool,
     /// Pipe the child's stdin, so `shep whisper` can write to it. `false`
     /// gives the child `/dev/null` on fd 0, which is what every sheep gets
-    /// unless its config sets `stdin = true`.
+    /// unless its config sets `stdin = true`. Ignored under [`Self::pty`],
+    /// whose terminal takes a whisper without it.
     pub stdin: bool,
     /// Run the child on a pseudo-terminal: the slave is its fd 0, 1 and 2 and
     /// its controlling terminal, and the log gets what it printed as plain

@@ -62,7 +62,7 @@ async fn a_line_whose_caller_stopped_waiting_is_dropped_rather_than_written_late
 
     let (mut child_end, daemon_end) = tokio::io::duplex(STDIN_BUFFER);
     let (to_stdin, rx) = mpsc::channel(CHANNEL_CAPACITY);
-    spawn_stdin_pump(Some(daemon_end), rx);
+    spawn_stdin_pump(Some(daemon_end), b'\n', rx);
 
     // Wedges the pump: eight bytes into a four-byte pipe nobody is
     // reading yet.

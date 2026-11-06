@@ -486,7 +486,8 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 2010 for #1351: which parent links the Linux open follows,
   // what the 5.6 and seccomp fallback loses, and that Windows refuses no
   // symlink. Required content, not prose to trim back out.
-  logs: 2037,
+  // Raised from 2037 for #1562: where a `pty = true` sheep's output lands.
+  logs: 2060,
   // Raised from 1690 on 2026-09-28 for "Naming your lambs": `lamb-label`
   // is a new message an app author has to be told about, not prose to trim
   // back out.
@@ -523,7 +524,8 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 1620 for `shep signal --lamb` (#354): the flag, its one-sheep
   // rule, the `not_a_lamb` refusal and the old-shepherd refusal are surface an
   // operator has to be told about.
-  "talking-to-a-sheep": 1678,
+  // Raised from 1678 for #1562: a pty sheep takes a whisper, and its echo.
+  "talking-to-a-sheep": 1726,
   // Raised from 1330 on the same day and for the same feature. `host` is a
   // fourth key beside `data`, and its three spellings are three different
   // answers a script has to tell apart: an object, `null`, and no key at
