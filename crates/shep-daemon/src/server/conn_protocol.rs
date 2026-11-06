@@ -150,19 +150,24 @@ async fn read_loop(
         attribution.note(ctx, &envelope.body);
         // Refused before dispatch, which would resize the first sheep's
         // terminal for an attach it then turns away.
-        if matches!(envelope.body, Request::Attach { .. })
-            && streams.pty.as_ref().is_some_and(PtyWriter::is_live)
-        {
-            let refusal = Reply {
-                id: envelope.id,
-                result: Err(RpcError {
-                    code: RpcErrorCode::InvalidConfig,
-                    message: "this connection is already attached to a pty".to_owned(),
-                    daemon_version: None,
-                }),
-            };
-            send(out, &refusal).await?;
-            continue;
+        if matches!(envelope.body, Request::Attach { .. }) {
+            if streams.pty.as_ref().is_some_and(PtyWriter::is_live) {
+                let refusal = Reply {
+                    id: envelope.id,
+                    result: Err(RpcError {
+                        code: RpcErrorCode::InvalidConfig,
+                        message: "this connection is already attached to a pty".to_owned(),
+                        daemon_version: None,
+                    }),
+                };
+                send(out, &refusal).await?;
+                continue;
+            }
+            // An ended writer may not have queued its `PtyEnd` yet, and the
+            // new attach's reply must not overtake it.
+            if let Some(ended) = streams.pty.take() {
+                ended.finish().await;
+            }
         }
         match dispatch(envelope, conn, origin.link(), ctx).await {
             Outcome::Reply(reply) => send(out, &reply).await?,

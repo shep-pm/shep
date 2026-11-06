@@ -524,14 +524,11 @@ async fn run(
             },
             Err(err) => reply(Err(invalid_config(err))),
         },
-        // Subscribed before the resize, so the redraw it provokes is heard.
+        // The shepherd subscribes, then resizes the same terminal, so the
+        // redraw is heard and both name one instance.
         Request::Attach { name, rows, cols } => {
-            let attached = match ctx.supervisor.pty_attach(name.clone()).await {
-                Ok(attached) => attached,
-                Err(err) => return reply(Err(rpc_error(&err))),
-            };
-            match ctx.supervisor.pty_resize(name.clone(), rows, cols).await {
-                Ok(_) => Outcome::Attach {
+            match ctx.supervisor.pty_attach(name.clone(), rows, cols).await {
+                Ok(attached) => Outcome::Attach {
                     reply: Reply {
                         id,
                         result: Ok(Response::Attached {

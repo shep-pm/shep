@@ -443,10 +443,15 @@ pub(crate) enum Command {
         /// task of its own (see [`Actor::begin_send_line`]).
         reply: oneshot::Sender<Result<Vec<LineReply>, SupervisorError>>,
     },
-    /// Subscribes to the output of one sheep's pty.
+    /// Subscribes to the output of one sheep's pty, then sizes that same
+    /// terminal, off the actor loop.
     PtyAttach {
         /// The sheep's name.
         name: String,
+        /// The window's height in rows.
+        rows: u16,
+        /// The window's width in columns.
+        cols: u16,
         /// The subscription, or why there is no terminal to attach to.
         reply: oneshot::Sender<Result<PtyAttached, SupervisorError>>,
     },

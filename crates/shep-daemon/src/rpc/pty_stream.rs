@@ -165,6 +165,13 @@ impl PtyWriter {
         !self.ended.load(Ordering::Acquire) && !self.task.is_finished()
     }
 
+    /// Waits for the writer to finish, which an ended one does as soon as
+    /// `PtyEnd` is queued, so that nothing it wrote can land after what the
+    /// caller queues next.
+    pub(crate) async fn finish(self) {
+        let _ = self.task.await;
+    }
+
     /// Stops the writer and drops the subscription.
     pub(crate) fn abort(self) {
         self.task.abort();

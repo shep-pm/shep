@@ -863,16 +863,30 @@ impl SupervisorHandle {
         .await?
     }
 
-    /// Subscribes to the output of `name`'s pty, from now on.
+    /// Subscribes to the output of `name`'s pty, from now on, then sizes that
+    /// same terminal to `rows` by `cols` so the program redraws into the
+    /// subscription.
     ///
     /// # Errors
     ///
     /// - [`SupervisorError::NoSuchSheep`]: nothing is registered as `name`.
     /// - [`SupervisorError::NoPty`]: no instance of it has an open pty.
+    /// - [`SupervisorError::PtyFailed`]: the OS refused the size, or it did
+    ///   not finish within [`STDIN_WRITE_TIMEOUT`].
     /// - [`SupervisorError::EngineStopped`]: the actor is gone.
-    pub(crate) async fn pty_attach(&self, name: String) -> Result<PtyAttached, SupervisorError> {
-        self.call(|reply| Command::PtyAttach { name, reply })
-            .await?
+    pub(crate) async fn pty_attach(
+        &self,
+        name: String,
+        rows: u16,
+        cols: u16,
+    ) -> Result<PtyAttached, SupervisorError> {
+        self.call(|reply| Command::PtyAttach {
+            name,
+            rows,
+            cols,
+            reply,
+        })
+        .await?
     }
 
     /// Types `bytes` into `name`'s pty exactly as given, bounded at

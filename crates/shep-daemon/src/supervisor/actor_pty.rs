@@ -22,18 +22,33 @@ impl<R: ProcessRunner> Actor<R> {
             })
     }
 
-    /// Subscribes to `name`'s terminal, answering on the actor loop: a
-    /// subscription is a lookup and a clone, and awaits nothing.
-    pub(super) fn pty_attach(
+    /// Subscribes to `name`'s terminal and sizes that same terminal, from a
+    /// task of its own for the reason [`Self::begin_pty_input`] gives.
+    ///
+    /// The subscription is taken here, on the actor loop, before the size is
+    /// asked: the redraw the size provokes is then heard. Sizing the handle
+    /// the subscription came from keeps both on one instance, which a second
+    /// lookup by name would not if the terminal closed between the two.
+    pub(super) fn begin_pty_attach(
         &self,
         name: &str,
+        rows: u16,
+        cols: u16,
         reply: oneshot::Sender<Result<PtyAttached, SupervisorError>>,
     ) {
-        let attached = self.open_pty_of(name).map(|(id, pty)| PtyAttached {
-            id,
-            output: pty.subscribe(),
+        let (id, pty) = match self.open_pty_of(name) {
+            Ok(found) => found,
+            Err(err) => {
+                let _ = reply.send(Err(err));
+                return;
+            }
+        };
+        let output = pty.subscribe();
+        let name = name.to_owned();
+        tokio::spawn(async move {
+            let sized = pty_answer(id, &name, pty.resize(rows, cols)).await;
+            let _ = reply.send(sized.map(|id| PtyAttached { id, output }));
         });
-        let _ = reply.send(attached);
     }
 
     /// Types `bytes` into `name`'s terminal from a task of its own.
@@ -81,16 +96,27 @@ impl<R: ProcessRunner> Actor<R> {
         let name = name.to_owned();
         let asked = ask(pty);
         tokio::spawn(async move {
-            let result = match tokio::time::timeout(STDIN_WRITE_TIMEOUT, asked).await {
-                Ok(Ok(())) => Ok(id),
-                Ok(Err(PtyError::Gone)) => Err(SupervisorError::NoPty { name }),
-                Ok(Err(PtyError::Failed(msg))) => Err(SupervisorError::PtyFailed(msg)),
-                Err(_elapsed) => Err(SupervisorError::PtyFailed(format!(
-                    "sheep {name} did not take the write within {}s",
-                    STDIN_WRITE_TIMEOUT.as_secs()
-                ))),
-            };
-            let _ = reply.send(result);
+            let _ = reply.send(pty_answer(id, &name, asked).await);
         });
+    }
+}
+
+/// What a write or size on instance `id` of `name`'s terminal came to,
+/// bounded at [`STDIN_WRITE_TIMEOUT`]: the id on success.
+async fn pty_answer(
+    id: u32,
+    name: &str,
+    asked: impl Future<Output = Result<(), PtyError>>,
+) -> Result<u32, SupervisorError> {
+    match tokio::time::timeout(STDIN_WRITE_TIMEOUT, asked).await {
+        Ok(Ok(())) => Ok(id),
+        Ok(Err(PtyError::Gone)) => Err(SupervisorError::NoPty {
+            name: name.to_owned(),
+        }),
+        Ok(Err(PtyError::Failed(msg))) => Err(SupervisorError::PtyFailed(msg)),
+        Err(_elapsed) => Err(SupervisorError::PtyFailed(format!(
+            "sheep {name} did not take the write within {}s",
+            STDIN_WRITE_TIMEOUT.as_secs()
+        ))),
     }
 }
