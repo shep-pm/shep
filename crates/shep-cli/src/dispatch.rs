@@ -286,6 +286,27 @@ pub(crate) async fn run(
         .await;
     }
 
+    // Not in the locked block below: a session runs until the operator
+    // detaches, and a lock held that long wedges the panic hook and any other
+    // thread's write.
+    if let Commands::Attach(ref args) = cli.command {
+        let mut out = std::io::stdout();
+        let mut err = std::io::stderr();
+        let mut streams = Streams {
+            out: &mut out,
+            err: &mut err,
+            style,
+            fmt,
+        };
+        if let Some(code) = attach::unsupported(&mut streams) {
+            return code;
+        }
+        return with_client(&mut streams, &link, guard, async |client, streams| {
+            attach::attach(client, streams, args).await
+        })
+        .await;
+    }
+
     // Not in the locked block below: this runs until the operator quits, and
     // owns stdout directly through the terminal.
     if let Commands::Lookout(ref args) = cli.command {
@@ -465,15 +486,6 @@ pub(crate) async fn run(
         Commands::Whisper(ref args) => {
             with_client(&mut streams, &link, guard, async |client, streams| {
                 whisper::whisper(client, streams, args).await
-            })
-            .await
-        }
-        Commands::Attach(ref args) => {
-            if let Some(code) = attach::unsupported(&mut streams) {
-                return code;
-            }
-            with_client(&mut streams, &link, guard, async |client, streams| {
-                attach::attach(client, streams, args).await
             })
             .await
         }
@@ -672,6 +684,7 @@ pub(crate) async fn run(
         | Commands::DialStdio(_)
         | Commands::Bleats(_)
         | Commands::Lookout(_)
+        | Commands::Attach(_)
         | Commands::Whistle
         | Commands::Serve(_)
         | Commands::Runtime(_)
