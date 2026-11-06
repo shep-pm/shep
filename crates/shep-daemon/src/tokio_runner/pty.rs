@@ -149,7 +149,9 @@ pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
 /// The parent's copies of the slave close when `command` drops, so the
 /// caller drops it once the child is spawned, and the master then reads the
 /// end of the stream when the child's last descriptor closes. The child leads
-/// its own process group, so the caller sets no `process_group`.
+/// its own process group, so the caller sets no `process_group`. Start
+/// reading the master before the child exits: macOS drops what the slave
+/// queued once that close leaves nothing reading it (#1590).
 ///
 /// # Errors
 ///
@@ -412,31 +414,85 @@ impl AsyncRead for PtyReader {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use core::time::Duration;
 
     use tokio::io::AsyncReadExt as _;
     use tokio::time::timeout;
 
-    /// A child that has exited is a slave with no holder. The bytes it wrote
-    /// still arrive, then the stream ends cleanly.
+    use super::*;
+
+    /// How long a master gets to answer before a case calls it hung.
+    const MASTER_DEADLINE: Duration = Duration::from_secs(5);
+
+    /// What the slave writes to its terminal.
+    const WRITTEN: &[u8] = b"bye\n";
+
+    /// `WRITTEN` as the master hands it back: the terminal's `ONLCR` turns
+    /// the `\n` into `\r\n`.
+    const SEEN: &[u8] = b"bye\r\n";
+
+    /// What a slave wrote reaches its master, and the master then ends the
+    /// stream cleanly once the last slave closes.
+    ///
+    /// The reader exists before the write and the read finishes while a
+    /// slave is still open: macOS answers a read of a master whose last
+    /// slave closed with 0 and drops what that slave queued (#1590), so a
+    /// case that starts reading after the close tests the platform.
     #[tokio::test]
-    async fn a_master_whose_child_exited_reads_as_end_of_file() {
+    async fn a_master_hands_back_what_its_slave_wrote_and_then_ends() {
         let (master, slave) = open().unwrap();
-        rustix::io::write(&slave, b"bye\n").unwrap();
+        let mut reader = master.into_reader(broadcast::channel(1).0);
+        rustix::io::write(&slave, WRITTEN).unwrap();
+
+        let mut buf = [0u8; 64];
+        let mut seen = Vec::new();
+        timeout(MASTER_DEADLINE, async {
+            while seen != SEEN {
+                let read = reader
+                    .read(&mut buf)
+                    .await
+                    .expect("the master must answer a read");
+                assert_ne!(read, 0, "the master ended at {seen:?} before {SEEN:?}");
+                seen.extend_from_slice(&buf[..read]);
+            }
+        })
+        .await
+        .expect("the master never handed back what its slave wrote");
+
+        drop(slave);
+        let mut rest = Vec::new();
+        timeout(MASTER_DEADLINE, reader.read_to_end(&mut rest))
+            .await
+            .expect("the reader never saw the end of the stream")
+            .expect("the end of the stream must not be an error");
+        assert!(rest.is_empty(), "the master read {rest:?} past its own end");
+    }
+
+    /// Linux hands back what a slave queued before its last descriptor
+    /// closed, and only then fails the read with `EIO`.
+    ///
+    /// That order is Linux's: macOS ends the stream at the close and the
+    /// queued bytes never reach the reader, so this case is gated to Linux
+    /// rather than left to fail there.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_linux_master_hands_back_queued_bytes_before_it_ends_with_eio() {
+        let (master, slave) = open().unwrap();
+        rustix::io::write(&slave, WRITTEN).unwrap();
         drop(slave);
 
         let mut seen = Vec::new();
         timeout(
-            std::time::Duration::from_secs(5),
+            MASTER_DEADLINE,
             master
                 .into_reader(broadcast::channel(1).0)
                 .read_to_end(&mut seen),
         )
         .await
         .expect("the reader never saw the end of the stream")
-        .expect("end of stream must not be an error");
+        .expect("`EIO` must end the stream, not fail it");
 
-        assert_eq!(seen, b"bye\r\n");
+        assert_eq!(seen, SEEN);
     }
 
     #[test]
