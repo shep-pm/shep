@@ -318,6 +318,7 @@ pub(super) fn spawn_log_pump<O, E>(
                             #[cfg(unix)]
                             {
                                 files.pipes.out = None;
+                                files.pipes.pty = None;
                             }
                         }
                         AfterLine::LogsClosed => break,

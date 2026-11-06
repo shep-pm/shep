@@ -69,10 +69,6 @@ pub struct AdoptedSheep {
     /// Taken as the descriptor it was, with no reactor registration: the
     /// pump that reads it registers it. `None` for a sheep that runs on pipes
     /// and for one that is not running.
-    #[allow(
-        dead_code,
-        reason = "nothing reads the master until a pty sheep is carried"
-    )]
     pub pty: Option<File>,
 }
 

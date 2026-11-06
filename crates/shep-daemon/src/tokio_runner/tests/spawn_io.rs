@@ -364,6 +364,73 @@ async fn an_adopted_sheep_without_a_channel_has_closed_channel_ends() {
     );
 }
 
+/// A terminal opened the way a pty sheep's is: the master a predecessor
+/// carried, and a slave standing in for the child that holds it.
+#[cfg(unix)]
+fn a_terminal() -> (std::fs::File, std::fs::File) {
+    use rustix::fs::{Mode, OFlags, open};
+    use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
+
+    let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+    grantpt(&master).unwrap();
+    unlockpt(&master).unwrap();
+    let name = ptsname(&master, Vec::new()).unwrap();
+    let slave = open(
+        name.as_c_str(),
+        OFlags::RDWR | OFlags::NOCTTY,
+        Mode::empty(),
+    )
+    .unwrap();
+    (std::fs::File::from(master), std::fs::File::from(slave))
+}
+
+/// fails if an adopted pty sheep stops logging what its terminal prints, or
+/// stops taking a whisper typed into the same master.
+///
+/// The slave stands in for the child: what it writes is what the successor
+/// must log, and what the whisper types is what it must read back.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_adopted_pty_sheep_keeps_logging_and_taking_whispers() {
+    use std::io::{Read as _, Write as _};
+
+    let dir = tempfile::tempdir().unwrap();
+    let (master, mut slave) = a_terminal();
+    let spec = AdoptSpec {
+        pty: Some(master),
+        ..adopt_spec(&dir, None, None)
+    };
+    let (_proc, mut io) = TokioRunner::new()
+        .adopt(spec)
+        .expect("the real runner must be able to adopt a pty sheep");
+
+    slave.write_all(b"from the child\n").unwrap();
+    let logged = timeout(PUMP_DEADLINE, io.logs.recv())
+        .await
+        .expect("the adopted pump must log the terminal's output")
+        .expect("the pump must not end while the terminal is open");
+    assert_eq!(logged.line, "from the child");
+
+    let (done, ack) = oneshot::channel();
+    io.to_stdin
+        .send(StdinWrite {
+            line: "whisper".to_string(),
+            done,
+        })
+        .await
+        .expect("an adopted pty sheep must still have a stdin pump");
+    timeout(PUMP_DEADLINE, ack)
+        .await
+        .expect("the write must be acknowledged")
+        .expect("the pump must outlive the write")
+        .expect("the write must land");
+
+    // Cooked mode turns the carriage return the pump types into a newline.
+    let mut typed = [0_u8; 8];
+    slave.read_exact(&mut typed).unwrap();
+    assert_eq!(&typed, b"whisper\n");
+}
+
 /// The plainest adoption, with `stdin_pipe` and `channel` the only
 /// handles it carries.
 ///
@@ -391,6 +458,7 @@ fn adopt_spec(
         stdin_pipe,
         channel,
         dog_link: None,
+        pty: None,
         dog_topics: None,
         launch_dog: None,
         reaper: Arc::new(crate::runner::AdoptedReaper::new()),

@@ -4,8 +4,9 @@
 use core::pin::Pin;
 use core::task::{Context, Poll, ready};
 
+use std::fs::File;
 use std::io;
-use std::os::fd::OwnedFd;
+use std::os::fd::{AsRawFd as _, OwnedFd, RawFd};
 use std::process::Stdio;
 use std::sync::Arc;
 
@@ -14,6 +15,7 @@ use rustix::pty;
 use rustix::termios::{self, Winsize};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::net::unix::pipe::Receiver;
 use tokio::process::{ChildStdout, Command};
 
 use super::ansi::AnsiLines;
@@ -54,6 +56,45 @@ pub(super) struct PtyMaster {
     fd: Arc<AsyncFd<OwnedFd>>,
 }
 
+impl PtyMaster {
+    /// Sets `master` non-blocking and registers it with the reactor.
+    fn register(master: OwnedFd) -> io::Result<Self> {
+        let flags = fs::fcntl_getfl(&master)?;
+        fs::fcntl_setfl(&master, flags | OFlags::NONBLOCK)?;
+        // Tokio deprecated `new` for `register`, which needs tokio 1.53.3 where
+        // the workspace floor is 1.41. An `OwnedFd` is the open, stable
+        // descriptor `register` asks for, so the unsoundness does not apply.
+        #[allow(deprecated, reason = "register needs a newer tokio floor")]
+        let fd = AsyncFd::new(master)?;
+        Ok(Self { fd: Arc::new(fd) })
+    }
+
+    /// Takes a master a predecessor image carried across an exec.
+    ///
+    /// The kind is checked again, since the number came out of a blob: a
+    /// descriptor that is not a terminal is refused. Must run inside a tokio
+    /// runtime.
+    ///
+    /// # Errors
+    ///
+    /// `file` is not a terminal, or it could not be made non-blocking or
+    /// registered with the reactor.
+    pub(super) fn from_file(file: File) -> io::Result<Self> {
+        if !termios::isatty(&file) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "a carried pty master is not a terminal",
+            ));
+        }
+        Self::register(OwnedFd::from(file))
+    }
+
+    /// The master's descriptor number, which a handover carries.
+    pub(super) fn raw_fd(&self) -> RawFd {
+        self.fd.get_ref().as_raw_fd()
+    }
+}
+
 /// Opens a pair sized [`PTY_ROWS`] by [`PTY_COLS`]: the master the shepherd
 /// reads, and the slave the child gets for fd 0, 1 and 2.
 ///
@@ -83,14 +124,7 @@ pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
             ws_ypixel: 0,
         },
     )?;
-    let flags = fs::fcntl_getfl(&master)?;
-    fs::fcntl_setfl(&master, flags | OFlags::NONBLOCK)?;
-    // Tokio deprecated `new` for `register`, which needs tokio 1.53.3 where
-    // the workspace floor is 1.41. An `OwnedFd` is the open, stable
-    // descriptor `register` asks for, so the unsoundness does not apply.
-    #[allow(deprecated, reason = "register needs a newer tokio floor")]
-    let fd = AsyncFd::new(master)?;
-    Ok((PtyMaster { fd: Arc::new(fd) }, slave))
+    Ok((PtyMaster::register(master)?, slave))
 }
 
 /// Puts `command`'s child on a new terminal: the slave as its fd 0, 1 and 2
@@ -119,6 +153,8 @@ pub(super) fn attach(command: &mut Command) -> io::Result<PtyMaster> {
 pub(super) enum Stdout {
     /// The child's stdout pipe.
     Pipe(ChildStdout),
+    /// A stdout pipe's read end a predecessor image carried across an exec.
+    Carried(Receiver),
     /// The child's terminal, filtered to plain lines.
     Terminal(AnsiLines<PtyReader>),
 }
@@ -138,6 +174,7 @@ impl AsyncRead for Stdout {
     ) -> Poll<io::Result<()>> {
         match self.get_mut() {
             Self::Pipe(pipe) => Pin::new(pipe).poll_read(cx, buf),
+            Self::Carried(pipe) => Pin::new(pipe).poll_read(cx, buf),
             Self::Terminal(lines) => Pin::new(lines).poll_read(cx, buf),
         }
     }
