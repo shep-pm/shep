@@ -143,9 +143,9 @@ async fn the_detach_key_cuts_what_is_sent_at_that_byte() {
     assert_eq!(typed(&mut envelopes), [0x1b, b'M', 0xe8]);
 }
 
-/// The input a session read before stdin closed is not lost with it.
+/// The keys a session read before stdin closed are not lost with it.
 #[tokio::test]
-async fn text_read_before_stdin_closes_still_reaches_the_sheep() {
+async fn keys_read_before_stdin_closes_still_reach_the_sheep() {
     let dir = tempfile::tempdir().unwrap();
     let (client, mut envelopes) = accepting(dir.path()).await;
 

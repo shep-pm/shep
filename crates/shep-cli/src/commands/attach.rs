@@ -207,7 +207,7 @@ pub(crate) fn reset_modes(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
-/// How long a detach waits for the text typed before it to reach the sheep.
+/// How long a detach waits for the keys typed before it to reach the sheep.
 const DETACH_FLUSH: Duration = Duration::from_millis(250);
 
 /// Moves the sheep's output to the terminal and the operator's keys and
