@@ -208,6 +208,19 @@ pub async fn fake_client_answering_with_events(
     path: &Path,
     answer: impl Fn(&Request) -> (Result<Response, RpcError>, Vec<BusEvent>) + Send + 'static,
 ) -> (Client, mpsc::UnboundedReceiver<Envelope>) {
+    fake_client_leaving_unanswered(path, move |request| Some(answer(request))).await
+}
+
+/// As [`fake_client_answering_with_events`], but `answer` returns `None` for
+/// a request the shepherd never answers, for a test of a caller whose
+/// request is still waiting.
+///
+/// The envelope is still forwarded onto the returned channel, and later
+/// requests are still read and answered.
+pub async fn fake_client_leaving_unanswered(
+    path: &Path,
+    answer: impl Fn(&Request) -> Option<(Result<Response, RpcError>, Vec<BusEvent>)> + Send + 'static,
+) -> (Client, mpsc::UnboundedReceiver<Envelope>) {
     let mut listener = bind(path);
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
@@ -217,10 +230,13 @@ pub async fn fake_client_answering_with_events(
                 break;
             };
             let id = envelope.id;
-            let (reply, events) = answer(&envelope.body);
+            let answered = answer(&envelope.body);
             if tx.send(envelope).is_err() {
                 break;
             }
+            let Some((reply, events)) = answered else {
+                continue;
+            };
             match reply {
                 Ok(response) => write_reply(&mut frames, id, response).await,
                 Err(err) => write_err(&mut frames, id, err.code, err.message).await,

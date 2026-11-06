@@ -2,7 +2,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use shep_client::testing::{control_address, fake_client_answering_with_events};
+use shep_client::testing::{
+    control_address, fake_client_answering_with_events, fake_client_leaving_unanswered,
+};
 use shep_core::protocol::{BusEvent, Envelope, Request, Response, RpcError, RpcErrorCode};
 use tokio::sync::mpsc;
 
@@ -306,20 +308,15 @@ async fn dropped_events_are_reported_rather_than_skipped() {
     assert!(err.contains("7 events were dropped"), "{err}");
 }
 
-/// A pty write that stalls must not keep the operator from leaving.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+/// A pty write the shepherd never answers must not keep the operator from
+/// leaving.
+#[tokio::test]
 async fn ctrl_right_bracket_detaches_while_a_write_is_stalled() {
     let dir = tempfile::tempdir().unwrap();
-    let (gate_tx, gate) = std::sync::mpsc::channel::<()>();
-    let (stalled_tx, mut stalled) = mpsc::unbounded_channel::<()>();
-    let (client, _envelopes) =
-        fake_client_answering_with_events(&control_address(dir.path()), move |request| {
-            if matches!(request, Request::PtyInput { .. }) {
-                stalled_tx.send(()).unwrap();
-                // Holds the fake shepherd's reply until the test is done.
-                let _ = gate.recv();
-            }
-            (Ok(attached()), Vec::new())
+    let (client, mut envelopes) =
+        fake_client_leaving_unanswered(&control_address(dir.path()), |request| match request {
+            Request::PtyInput { .. } => None,
+            _ => Some((Ok(attached()), Vec::new())),
         })
         .await;
     let (tty, keys, _resizes) = tty();
@@ -328,9 +325,15 @@ async fn ctrl_right_bracket_detaches_while_a_write_is_stalled() {
 
     let driver = async {
         keys.send(b"ab".to_vec()).await.unwrap();
-        tokio::time::timeout(BOUND, stalled.recv())
-            .await
-            .expect("the write must reach the shepherd");
+        // The write is on the wire once the shepherd has read it.
+        while !matches!(
+            tokio::time::timeout(BOUND, envelopes.recv())
+                .await
+                .expect("the write must reach the shepherd")
+                .expect("the connection must stay open")
+                .body,
+            Request::PtyInput { .. }
+        ) {}
         // More text and the detach key, while the first write is unanswered.
         keys.send(b"cd\x1d".to_vec()).await.unwrap();
     };
@@ -338,8 +341,7 @@ async fn ctrl_right_bracket_detaches_while_a_write_is_stalled() {
         tokio::join!(session(&client, &mut streams, "web", tty), driver)
     })
     .await
-    .expect("the detach key must end a session whose write is stalled");
-    gate_tx.send(()).unwrap();
+    .expect("the detach key must end a session whose write is unanswered");
 
     assert_eq!(code, ExitCode::Success);
     assert!(String::from_utf8(err).unwrap().contains("detached"));
