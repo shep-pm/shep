@@ -54,6 +54,23 @@ fn a_sheep_that_stays_up(
         .unwrap()
 }
 
+/// A sheep that stays up and reads its terminal, logging the length of every
+/// line it is handed.
+///
+/// A sheep that never reads leaves what is typed to it in the terminal's input
+/// queue, which macOS caps near 1024 bytes across all its lines, so a case
+/// that types more than one line needs one that drains.
+fn a_sheep_that_reads_its_terminal(
+    dir: &tempfile::TempDir,
+) -> (<TokioRunner as ProcessRunner>::Proc, ProcIo) {
+    TokioRunner::new()
+        .spawn(&pty_spec(
+            dir,
+            r#"stty -echo; echo ready; while read line; do echo "got ${#line}"; done"#,
+        ))
+        .unwrap()
+}
+
 #[tokio::test]
 async fn a_pty_sheep_sees_a_terminal_on_fd_0_1_and_2() {
     let lines = printed_by(
@@ -373,8 +390,11 @@ async fn a_cooked_terminal_refuses_raw_input_it_would_cut() {
 #[tokio::test]
 async fn an_unfinished_line_counts_across_sends_and_whispers() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut proc, io) = a_sheep_that_stays_up(&dir);
+    let (mut proc, mut io) = a_sheep_that_reads_its_terminal(&dir);
     let handle = handle_of(&io);
+    // The sheep has set its terminal and is reading, so every line the case
+    // ends is drained out of the terminal's input queue before the next begins.
+    assert_eq!(next_log_line(&mut io).await, "ready");
 
     handle.send(vec![b'x'; 600]).await.unwrap();
     let second = handle.send(vec![b'y'; 600]).await;
@@ -388,9 +408,16 @@ async fn an_unfinished_line_counts_across_sends_and_whispers() {
         "a whisper lands on the same unfinished line: {whisper:?}"
     );
 
-    // A newline ends the line, so the count starts over.
+    // A newline ends the line, so the count starts over. The length the sheep
+    // reports is the first send alone, so neither refusal wrote anything.
     handle.send(b"\n".to_vec()).await.unwrap();
+    assert_eq!(next_log_line(&mut io).await, "got 600");
+
+    // The count is fresh, so 600 bytes land where 600 bytes were refused, and
+    // land whole.
     handle.send(vec![b'y'; 600]).await.unwrap();
+    handle.send(b"\n".to_vec()).await.unwrap();
+    assert_eq!(next_log_line(&mut io).await, "got 600");
     proc.kill_tree().unwrap();
 }
 
