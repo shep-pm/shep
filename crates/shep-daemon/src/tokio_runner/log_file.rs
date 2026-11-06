@@ -357,6 +357,13 @@ pub(super) struct LogFiles {
     /// See [`LogFiles::reading`] for why a report parks a pump at all.
     #[cfg(unix)]
     pub(super) parked: bool,
+    /// Whether this pump has given up waiting for room on `logs` and is
+    /// writing to its files only.
+    ///
+    /// Set when a pty pump's [`super::pump::LIVE_WAIT`] runs out and cleared
+    /// by the next slot it finds. While it is set a line is skipped at once,
+    /// so one stalled reader costs one wait rather than one per line.
+    pub(super) behind: bool,
 }
 
 impl LogFiles {
@@ -380,6 +387,24 @@ impl LogFiles {
         #[cfg(not(unix))]
         {
             true
+        }
+    }
+
+    /// Whether this pump has to keep its sheep's stream read while `logs` is
+    /// full, rather than waiting for room on it.
+    ///
+    /// A pty master drops what its slave queued about 0.6s after the last slave
+    /// closes, and this pump is the master's only reader: a pty pump parked on
+    /// a full `logs` channel can outlive its child and never see the child's
+    /// last line. A pipe keeps its bytes until someone reads them.
+    pub(super) fn keeps_reading(&self) -> bool {
+        #[cfg(unix)]
+        {
+            self.pipes.pty.is_some()
+        }
+        #[cfg(not(unix))]
+        {
+            false
         }
     }
 

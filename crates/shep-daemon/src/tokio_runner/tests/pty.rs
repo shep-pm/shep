@@ -4,8 +4,10 @@
 use nix::unistd::{Pid, getpgid, getsid};
 use tokio::time::timeout;
 
+use super::super::CHANNEL_CAPACITY;
 use super::super::TokioRunner;
 use super::PUMP_DEADLINE;
+use super::log_text;
 use super::stop_signal::is_gone_within_deadline;
 use crate::runner::{
     ProcIo, ProcessRunner, PtyError, PtyHandle, RunnerError, RunningProcess, SpawnSpec, StdinWrite,
@@ -500,4 +502,39 @@ async fn no_receiver_means_no_copy() {
     timeout(PUMP_DEADLINE, proc.wait())
         .await
         .expect("the script must exit");
+}
+
+/// Fails if a pty pump parks on a full `logs` channel and never comes back to
+/// its master: the lines past the channel's capacity never reach the file,
+/// and macOS drops what the terminal queued outright once its last slave has
+/// closed.
+#[tokio::test]
+async fn a_pty_sheep_exits_and_logs_every_line_with_the_logs_channel_full() {
+    const LINES: usize = CHANNEL_CAPACITY + 8;
+    let dir = tempfile::tempdir().unwrap();
+    let script =
+        format!("i=1; while [ $i -le {LINES} ]; do echo \"line-$i\"; i=$((i+1)); done; echo LAST");
+    let (mut proc, _io) = TokioRunner::new().spawn(&pty_spec(&dir, &script)).unwrap();
+    // `_io` is held and its `logs` receiver is never read, which is what a
+    // sheep task parked in `kill_process` does to a pump.
+    timeout(PUMP_DEADLINE, proc.wait())
+        .await
+        .expect("the sheep must exit with nobody reading its live log bus");
+
+    // By content, not by a line count: a count cannot say which line a pump
+    // lost, and a terminal can add lines of its own.
+    let logged: Vec<String> = log_text(&dir.path().join("out.log"))
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let missing: Vec<String> = (1..=LINES)
+        .map(|n| format!("line-{n}"))
+        .chain(std::iter::once("LAST".to_string()))
+        .filter(|want| !logged.contains(want))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "every line the sheep wrote must reach its log file: missing {missing:?} of {LINES} \
+         lines and `LAST`, saw {logged:?}"
+    );
 }

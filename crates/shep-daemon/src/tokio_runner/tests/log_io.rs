@@ -18,6 +18,8 @@ use shep_core::logstamp::{LOG_STAMP_BYTES, Stamper, stamp_into};
 use crate::runner::LogCtl;
 
 use super::super::log_file::{LogFile, LogFiles, PipeFds, open_append, record_lock};
+#[cfg(unix)]
+use super::super::pump::LIVE_WAIT;
 use super::super::{CHANNEL_CAPACITY, IDLE_FLUSH, LOG_BUFFER};
 use super::*;
 
@@ -368,6 +370,7 @@ async fn the_idle_flush_window_is_measured_from_the_oldest_buffered_line() {
         pipes: PipeFds::default(),
         #[cfg(unix)]
         parked: false,
+        behind: false,
     };
     assert_eq!(
         files.flush_deadline(),
@@ -658,6 +661,127 @@ async fn a_reopen_is_answered_while_the_logs_channel_is_full() {
             .expect("the pump must not end while its streams are open");
         assert_eq!(observed.line, format!("line-{n}"));
     }
+}
+
+/// Fails if a pty pump stops reading its stream because `logs` is full: the
+/// lines past the channel's capacity never reach the file.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_pty_pump_keeps_reading_past_a_full_logs_channel() {
+    let mut pump = PumpHarness::start_as_a_pty_pump();
+    let past = CHANNEL_CAPACITY + 10;
+    let mut written = String::new();
+    for n in 0..past {
+        let line = format!("line-{n}\n");
+        pump.out_writer.write_all(line.as_bytes()).await.unwrap();
+        written.push_str(&line);
+    }
+
+    // Nothing here reads `logs`, so a pump that waits for room on it never
+    // reaches the lines past the one that filled it.
+    assert_file_settles(&pump.out_path, &written).await;
+}
+
+/// Fails if a pty pump skips a line the moment `logs` is full, rather than
+/// spending [`LIVE_WAIT`] on a reader that keeps up.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_pty_pump_forwards_a_burst_to_a_reader_that_keeps_up() {
+    const BURST_LINES: usize = CHANNEL_CAPACITY * 10;
+    let mut pump = PumpHarness::start_as_a_pty_pump();
+    for n in 0..BURST_LINES {
+        pump.out_writer
+            .write_all(format!("line-{n}\n").as_bytes())
+            .await
+            .unwrap();
+    }
+
+    // This is the reader that keeps up: every `recv` frees the slot the pump
+    // is waiting on, so no wait of the pump's runs out.
+    for n in 0..BURST_LINES {
+        let observed = timeout(PUMP_DEADLINE, pump.logs.recv())
+            .await
+            .expect("the pump must forward a burst its reader keeps up with")
+            .expect("the pump must not end while its streams are open");
+        assert_eq!(
+            observed,
+            LogLine {
+                err: false,
+                line: format!("line-{n}")
+            }
+        );
+    }
+}
+
+/// Fails if a pty pump that has given up on `logs` stays given up: the next
+/// line after a drained channel must reach the live bus again.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_pty_pump_forwards_again_once_a_slot_opens() {
+    let mut pump = PumpHarness::start_as_a_pty_pump();
+    // Two lines past the channel: the first spends [`LIVE_WAIT`] and is then
+    // skipped, the second is skipped at once. The file holding both is proof
+    // the pump stopped waiting, since a parked pump never reads the second.
+    let past = CHANNEL_CAPACITY + 2;
+    let mut written = String::new();
+    for n in 0..past {
+        let line = format!("line-{n}\n");
+        pump.out_writer.write_all(line.as_bytes()).await.unwrap();
+        written.push_str(&line);
+    }
+    assert_file_settles(&pump.out_path, &written).await;
+
+    // The skipped lines are gone from `logs`, so exactly its capacity lands.
+    for n in 0..CHANNEL_CAPACITY {
+        let observed = timeout(PUMP_DEADLINE, pump.logs.recv())
+            .await
+            .expect("the pump must forward what fits on `logs`")
+            .expect("the pump must not end while its streams are open");
+        assert_eq!(observed.line, format!("line-{n}"));
+    }
+
+    pump.feed(false, "after-a-drain").await;
+}
+
+/// Fails if a piped pump loses the backpressure a pipe gives it: it stays
+/// parked on a full `logs` channel rather than skipping ahead.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_piped_pump_still_waits_for_room_on_a_full_logs_channel() {
+    assert!(
+        STILL_WINDOWS * IDLE_FLUSH > LIVE_WAIT,
+        "the still window must outlast the wait a piped pump never spends"
+    );
+    let mut pump = PumpHarness::start();
+    let parked = CHANNEL_CAPACITY + 1;
+    let mut written = String::new();
+    for n in 0..parked {
+        let line = format!("line-{n}\n");
+        pump.out_writer.write_all(line.as_bytes()).await.unwrap();
+        written.push_str(&line);
+    }
+    assert_file_settles(&pump.out_path, &written).await;
+
+    // The last line is owed to `logs` and nothing is draining it, so the pump
+    // is parked on that send: what the sheep writes next stays unread, past
+    // every window a pty pump would have spent before skipping.
+    pump.out_writer.write_all(b"held-back\n").await.unwrap();
+    assert_file_holds_still(&pump.out_path, &written).await;
+
+    written.push_str("held-back\n");
+    for n in 0..parked {
+        let observed = timeout(PUMP_DEADLINE, pump.logs.recv())
+            .await
+            .expect("the pump must resume once `logs` has room")
+            .expect("the pump must not end while its streams are open");
+        assert_eq!(observed.line, format!("line-{n}"));
+    }
+    let held = timeout(PUMP_DEADLINE, pump.logs.recv())
+        .await
+        .expect("the line the pump held must reach a drained `logs`")
+        .expect("the pump must not end while its streams are open");
+    assert_eq!(held.line, "held-back");
+    assert_file_settles(&pump.out_path, &written).await;
 }
 
 /// Fails if the pump lets go of a stream's [`LogFile`] once that stream
