@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-06
+
+### Added
+
+- Move the wire protocol to 19 ahead of the pty key
+- A sheep config takes a pty key that Windows refuses by name
+- The wire has attach, pty input, pty resize and the events a pty sends
+- A client does not send pty to a shepherd older than 19
+
+### Fixed
+
+- Request::PtyInput carries bytes, not text
+- BusEvent::PtyOut carries bytes, not text
+- A pty sheep's output reaches attach as bytes
+
+
 ## [0.24.2] - 2026-11-04
 
 ### Added

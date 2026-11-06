@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-06
+
+### Added
+
+- Shep whisper types into a pty sheep, and the operator docs say how
+- Common flags take a one-letter short form
+- Shep attach shows a pty sheep's live terminal and sends keys in
+- A sheep config takes a pty key that Windows refuses by name
+- A pty sheep survives a shepherd reload
+
+### Fixed
+
+- A GET decodes a chunked body, so the dog index loads
+- Cut the whisper and stdin pump doc comments to their IR-47 limits
+- Attach keeps reading the sheep's output while a keystroke is in flight
+- Attach detaches during a stalled write, restores on SIGTERM and refuses Windows before dialling
+- Attach flushes typed text when stdin closes and turns off the modes a sheep switched on
+- The local attach arm runs on unlocked stdout and stderr
+- Request::PtyInput carries bytes, not text
+- Attach sends a read bigger than one frame as several requests
+- BusEvent::PtyOut carries bytes, not text
+- A pty sheep's output reaches attach as bytes
+
+
 ## [0.24.2] - 2026-11-04
 
 ### Added

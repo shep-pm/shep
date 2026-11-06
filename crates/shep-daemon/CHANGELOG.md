@@ -10,6 +10,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-06
+
+### Added
+
+- A spawn spec carries pty and assemble defaults TERM
+- An ansi filter and a pty master reader for pty sheep
+- A pty sheep runs on a pseudo-terminal and logs plain lines
+- The handover blob names a sheep's pty master
+- Shep whisper types into a pty sheep, and the operator docs say how
+- A pty sheep survives a shepherd reload
+- The runner hands out a handle on a pty sheep's master
+- The shepherd serves an attach to a pty sheep
+- A pty sheep runs on a pseudo-terminal and its output is logged as plain lines
+
+### Changed
+
+- The scripted runner's terminal taps move to their own file
+
+### Fixed
+
+- Gate the pty assemble tests on Unix and respell a typos fixture
+- Open a pty master close-on-exec in one call off Linux
+- The ansi filter ends a line at CSI a and e
+- Cut the whisper and stdin pump doc comments to their IR-47 limits
+- Refuse a whispered line a pty sheep's terminal would cut short
+- A cooked terminal refuses raw input it would cut
+- A pty handle's output ends with the terminal and a cooked line is counted across writes
+- A connection may attach again the moment it reads PtyEnd
+- An attach sizes the terminal it subscribed to and never trails an old PtyEnd
+- Request::PtyInput carries bytes, not text
+- BusEvent::PtyOut carries bytes, not text
+- A doubled carriage return adds no blank line to a pty sheep's log
+- A pty sheep's output reaches attach as bytes
+
+
 ## [0.24.2] - 2026-11-04
 
 ### Fixed
