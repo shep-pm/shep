@@ -14,7 +14,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use rustix::fs::{self, Mode, OFlags};
 use rustix::pty;
-use rustix::termios::{self, Winsize};
+use rustix::termios::{self, LocalModes, Winsize};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _, ReadBuf};
 use tokio::net::unix::pipe::Receiver;
@@ -292,7 +292,25 @@ impl PtyWriter {
     }
 
     /// Writes `bytes` in pieces a terminal holds, with no terminator.
+    ///
+    /// A cooked terminal keeps what is typed until a newline in one buffer
+    /// and drops the rest, so a line over [`PTY_WRITE_MAX`] there is refused
+    /// before any byte is written. A raw terminal hands bytes to the child as
+    /// they come, so the pieces go through whatever their length.
     async fn write_raw(&mut self, bytes: &[u8]) -> Result<(), PtyError> {
+        let cooked = termios::tcgetattr(self.fd.get_ref())
+            .map_err(|error| PtyError::Failed(error.to_string()))?
+            .local_modes
+            .contains(LocalModes::ICANON);
+        if cooked {
+            // `\r` ends a line too: the default input flags turn it into `\n`.
+            let longest = bytes
+                .split_inclusive(|byte| matches!(byte, b'\n' | b'\r'))
+                .map(<[u8]>::len)
+                .max()
+                .unwrap_or(0);
+            within_terminal_buffer(longest).map_err(|error| PtyError::Failed(error.to_string()))?;
+        }
         for piece in bytes.chunks(PTY_WRITE_MAX) {
             self.write_all(piece)
                 .await

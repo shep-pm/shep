@@ -355,6 +355,36 @@ async fn raw_input_and_a_whispered_line_do_not_interleave() {
 }
 
 #[tokio::test]
+async fn a_cooked_terminal_refuses_raw_input_it_would_cut() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut proc, io) = a_sheep_that_stays_up(&dir);
+    let handle = handle_of(&io);
+
+    let answer = handle.send(vec![b'x'; 3000]).await;
+
+    assert!(
+        matches!(&answer, Err(PtyError::Failed(why)) if why.contains("3000")),
+        "an unterminated run over the buffer must be refused with its size: {answer:?}"
+    );
+    proc.kill_tree().unwrap();
+}
+
+#[tokio::test]
+async fn a_raw_terminal_takes_raw_input_of_any_length() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut proc, io) = TokioRunner::new()
+        .spawn(&pty_spec(&dir, "stty raw -echo; echo ready; exec cat"))
+        .unwrap();
+    let handle = handle_of(&io);
+    let mut rx = handle.subscribe();
+    raw_until(&mut rx, b"ready").await;
+
+    handle.send(vec![b'x'; 3000]).await.unwrap();
+
+    proc.kill_tree().unwrap();
+}
+
+#[tokio::test]
 async fn a_handle_fails_after_the_sheep_exits() {
     let dir = tempfile::tempdir().unwrap();
     let (mut proc, mut io) = TokioRunner::new()
