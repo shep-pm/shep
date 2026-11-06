@@ -8,8 +8,10 @@
 #![cfg_attr(not(unix), allow(dead_code))]
 
 use std::io;
+use std::time::Duration;
 
 use futures_util::FutureExt as _;
+use futures_util::future::LocalBoxFuture;
 use shep_client::{Client, EventStream, Lagged, RequestError};
 use shep_core::protocol::{BusEvent, Request, Response};
 use tokio::sync::mpsc;
@@ -61,13 +63,52 @@ pub(crate) async fn attach(
     streams: &mut Streams<'_>,
     args: &AttachArgs,
 ) -> ExitCode {
-    match tty::open() {
-        Ok(tty) => session(client, streams, &args.name, tty).await,
-        Err(err) => streams.fail(
-            ExitCode::Failure,
-            &format!("could not put the terminal into raw mode: {err}"),
-        ),
+    use tokio::signal::unix::{SignalKind, signal};
+
+    // Listening before raw mode goes on: with no listener a SIGTERM ends the
+    // process without running the guard that puts the terminal back.
+    let mut terminate = match signal(SignalKind::terminate()) {
+        Ok(terminate) => terminate,
+        Err(err) => {
+            return streams.fail(
+                ExitCode::Failure,
+                &format!("could not listen for SIGTERM: {err}"),
+            );
+        }
+    };
+    let tty = match tty::open() {
+        Ok(tty) => tty,
+        Err(err) => {
+            return streams.fail(
+                ExitCode::Failure,
+                &format!("could not put the terminal into raw mode: {err}"),
+            );
+        }
+    };
+    // Dropping the session on SIGTERM drops its restore guard.
+    tokio::select! {
+        code = session(client, streams, &args.name, tty) => code,
+        _ = terminate.recv() => streams.fail(ExitCode::Failure, "terminated by SIGTERM"),
     }
+}
+
+/// The refusal for a build with no Unix terminal, or `None` where `attach`
+/// can run. Asked before any connection is made, so an absent shepherd or an
+/// unreachable host does not hide it.
+#[cfg(unix)]
+pub(crate) fn unsupported(_streams: &mut Streams<'_>) -> Option<ExitCode> {
+    None
+}
+
+/// The refusal for a build with no Unix terminal, or `None` where `attach`
+/// can run. Asked before any connection is made, so an absent shepherd or an
+/// unreachable host does not hide it.
+#[cfg(not(unix))]
+pub(crate) fn unsupported(streams: &mut Streams<'_>) -> Option<ExitCode> {
+    Some(streams.fail(
+        ExitCode::Failure,
+        "`shep attach` is not available on Windows",
+    ))
 }
 
 /// Refuses `attach`, which needs a Unix terminal.
@@ -77,10 +118,7 @@ pub(crate) async fn attach(
     streams: &mut Streams<'_>,
     _args: &AttachArgs,
 ) -> ExitCode {
-    streams.fail(
-        ExitCode::Failure,
-        "`shep attach` is not available on Windows",
-    )
+    unsupported(streams).unwrap_or(ExitCode::Failure)
 }
 
 /// How a [`session`] ended.
@@ -149,13 +187,17 @@ pub(crate) async fn session(
     ExitCode::Success
 }
 
+/// How long a detach waits for the text typed before it to reach the sheep.
+const DETACH_FLUSH: Duration = Duration::from_millis(250);
+
 /// Moves the sheep's output to the terminal and the operator's keys and
 /// resizes to the sheep, until one of them ends the session.
 ///
-/// A ready event is taken before a key, so a sheep that has just exited is
-/// read as that rather than as a refusal of the next key.
-async fn pump(
-    client: &Client,
+/// One request is in flight at a time, a branch of the same `select!` as the
+/// events and keys, so a slow reply holds up neither. Text typed meanwhile is
+/// queued. No branch is preferred, so output cannot starve the keys.
+async fn pump<'a>(
+    client: &'a Client,
     streams: &mut Streams<'_>,
     name: &str,
     events: &mut EventStream,
@@ -163,9 +205,23 @@ async fn pump(
     mut resizes: mpsc::Receiver<Size>,
 ) -> End {
     let mut typed = keys::Keys::default();
+    let mut queued = String::new();
+    let mut resize: Option<Size> = None;
+    let mut in_flight: Option<LocalBoxFuture<'a, Result<Response, RequestError>>> = None;
     loop {
+        if in_flight.is_none() {
+            let body = if queued.is_empty() {
+                resize.take().map(|size| Request::PtyResize {
+                    name: name.to_owned(),
+                    rows: size.rows,
+                    cols: size.cols,
+                })
+            } else {
+                Some(input(name, &mut queued))
+            };
+            in_flight = body.map(|body| client.request(body).boxed_local());
+        }
         tokio::select! {
-            biased;
             event = events.next() => {
                 if let Err(end) = show(streams, name, event) {
                     return end;
@@ -173,60 +229,62 @@ async fn pump(
             }
             chunk = keys.recv() => {
                 let Some(chunk) = chunk else { return End::Detached };
-                let keys = typed.push(&chunk);
-                if !keys.text.is_empty() {
-                    let body = Request::PtyInput { name: name.to_owned(), data: keys.text };
-                    if let Err(end) = send(client, streams, name, events, body).await {
-                        return end;
-                    }
-                }
-                if keys.detach {
-                    return End::Detached;
+                let typed_now = typed.push(&chunk);
+                queued.push_str(&typed_now.text);
+                if typed_now.detach {
+                    return detach(client, name, in_flight.take(), queued).await;
                 }
             }
-            Some(size) = resizes.recv() => {
-                let body = Request::PtyResize {
-                    name: name.to_owned(),
-                    rows: size.rows,
-                    cols: size.cols,
-                };
-                if let Err(end) = send(client, streams, name, events, body).await {
-                    return end;
+            Some(size) = resizes.recv() => resize = Some(size),
+            outcome = async {
+                match in_flight.as_mut() {
+                    Some(request) => request.await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                in_flight = None;
+                if let Err(err) = outcome {
+                    // Most likely refused because the sheep just exited, and
+                    // the event that says so is already waiting.
+                    while let Some(event) = events.next().now_or_never() {
+                        if let Err(end) = show(streams, name, event) {
+                            return end;
+                        }
+                    }
+                    return End::Request(err);
                 }
             }
         }
     }
 }
 
-/// Sends `body` and waits for its reply, showing the sheep's output as it
-/// arrives meanwhile, so a slow round trip cannot overflow the event buffer.
-///
-/// An event that is already waiting when the request fails is shown before
-/// the failure is reported: the request is most likely refused because the
-/// sheep just exited, and the waiting event says so.
-async fn send(
+/// A `PtyInput` of everything queued, which it empties.
+fn input(name: &str, queued: &mut String) -> Request {
+    Request::PtyInput {
+        name: name.to_owned(),
+        data: std::mem::take(queued),
+    }
+}
+
+/// Ends the session on the detach key, first letting what was typed before
+/// it reach the sheep for as long as [`DETACH_FLUSH`], so a stalled write
+/// cannot keep the operator from leaving.
+async fn detach(
     client: &Client,
-    streams: &mut Streams<'_>,
     name: &str,
-    events: &mut EventStream,
-    body: Request,
-) -> Result<(), End> {
-    let reply = client.request(body);
-    tokio::pin!(reply);
-    let outcome = loop {
-        tokio::select! {
-            biased;
-            event = events.next() => show(streams, name, event)?,
-            outcome = &mut reply => break outcome,
+    in_flight: Option<LocalBoxFuture<'_, Result<Response, RequestError>>>,
+    mut queued: String,
+) -> End {
+    let flush = async {
+        if let Some(request) = in_flight {
+            let _ = request.await;
+        }
+        if !queued.is_empty() {
+            let _ = client.request(input(name, &mut queued)).await;
         }
     };
-    if let Err(err) = outcome {
-        while let Some(event) = events.next().now_or_never() {
-            show(streams, name, event)?;
-        }
-        return Err(End::Request(err));
-    }
-    Ok(())
+    let _ = tokio::time::timeout(DETACH_FLUSH, flush).await;
+    End::Detached
 }
 
 /// Acts on one item of the event stream.

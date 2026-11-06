@@ -306,6 +306,69 @@ async fn dropped_events_are_reported_rather_than_skipped() {
     assert!(err.contains("7 events were dropped"), "{err}");
 }
 
+/// A pty write that stalls must not keep the operator from leaving.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ctrl_right_bracket_detaches_while_a_write_is_stalled() {
+    let dir = tempfile::tempdir().unwrap();
+    let (gate_tx, gate) = std::sync::mpsc::channel::<()>();
+    let (stalled_tx, mut stalled) = mpsc::unbounded_channel::<()>();
+    let (client, _envelopes) =
+        fake_client_answering_with_events(&control_address(dir.path()), move |request| {
+            if matches!(request, Request::PtyInput { .. }) {
+                stalled_tx.send(()).unwrap();
+                // Holds the fake shepherd's reply until the test is done.
+                let _ = gate.recv();
+            }
+            (Ok(attached()), Vec::new())
+        })
+        .await;
+    let (tty, keys, _resizes) = tty();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+
+    let driver = async {
+        keys.send(b"ab".to_vec()).await.unwrap();
+        tokio::time::timeout(BOUND, stalled.recv())
+            .await
+            .expect("the write must reach the shepherd");
+        // More text and the detach key, while the first write is unanswered.
+        keys.send(b"cd\x1d".to_vec()).await.unwrap();
+    };
+    let (code, ()) = tokio::time::timeout(BOUND, async {
+        tokio::join!(session(&client, &mut streams, "web", tty), driver)
+    })
+    .await
+    .expect("the detach key must end a session whose write is stalled");
+    gate_tx.send(()).unwrap();
+
+    assert_eq!(code, ExitCode::Success);
+    assert!(String::from_utf8(err).unwrap().contains("detached"));
+}
+
+#[tokio::test]
+async fn the_terminal_is_restored_when_the_session_is_cancelled() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, _envelopes) = accepting(dir.path()).await;
+    let restored = Arc::new(AtomicUsize::new(0));
+    let (mut tty, _keys, _resizes) = tty();
+    tty.restore = RestoreGuard::with_action({
+        let restored = Arc::clone(&restored);
+        move || {
+            restored.fetch_add(1, Ordering::SeqCst);
+        }
+    });
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+
+    // The way a SIGTERM ends it: the session future is dropped mid-run.
+    tokio::select! {
+        _code = session(&client, &mut streams, "web", tty) => panic!("nothing ends this session"),
+        () = std::future::ready(()) => {}
+    }
+
+    assert_eq!(restored.load(Ordering::SeqCst), 1);
+}
+
 /// A stdout whose write panics, standing in for any bug in the session.
 struct PanicsOnWrite;
 

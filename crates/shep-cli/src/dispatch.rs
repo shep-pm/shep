@@ -469,6 +469,9 @@ pub(crate) async fn run(
             .await
         }
         Commands::Attach(ref args) => {
+            if let Some(code) = attach::unsupported(&mut streams) {
+                return code;
+            }
             with_client(&mut streams, &link, guard, async |client, streams| {
                 attach::attach(client, streams, args).await
             })
@@ -736,6 +739,12 @@ async fn run_on_host(
                 Ok(client) => muster::muster(&client, &mut streams).await,
                 Err(code) => code,
             };
+        }
+        // Refused before the dial, which an unreachable host would fail first.
+        Commands::Attach(_) => {
+            if let Some(code) = attach::unsupported(&mut streams) {
+                return code;
+            }
         }
         _ => {}
     }
