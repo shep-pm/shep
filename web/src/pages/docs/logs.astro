@@ -116,6 +116,10 @@ $ shep bleats <name> --no-follow  # tail only`}</CodeBlock>
       appending to the same path by accident rather than on purpose.
     </p>
     <p>
+      A <code>pty = true</code> sheep's output is logged as plain lines on
+      stdout, colour codes stripped. Its stderr file stays empty.
+    </p>
+    <p>
       Every line in those files starts with the time shep wrote it, in local
       time with the offset spelled out:{" "}
       <code>2026-09-02T14:22:31.412+02:00 the sheep said this</code>. The

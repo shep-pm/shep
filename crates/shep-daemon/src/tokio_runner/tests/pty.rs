@@ -7,7 +7,8 @@ use tokio::time::timeout;
 use super::super::TokioRunner;
 use super::PUMP_DEADLINE;
 use super::stop_signal::is_gone_within_deadline;
-use crate::runner::{ProcIo, ProcessRunner, RunningProcess, SpawnSpec};
+use crate::runner::{ProcIo, ProcessRunner, RunningProcess, SpawnSpec, StdinWrite};
+use tokio::sync::oneshot;
 
 /// A spec that runs `script` under `/bin/sh` on a terminal.
 fn pty_spec(dir: &tempfile::TempDir, script: &str) -> SpawnSpec {
@@ -113,4 +114,94 @@ async fn kill_tree_reaches_a_lamb_of_a_pty_sheep() {
         is_gone_within_deadline(lamb).await,
         "SIGKILL to the group must reach the lamb"
     );
+}
+
+/// Whispers `line` and waits for the write to be acknowledged.
+async fn whisper(io: &ProcIo, line: &str) {
+    let (done, ack) = oneshot::channel();
+    io.to_stdin
+        .send(StdinWrite {
+            line: line.to_string(),
+            done,
+        })
+        .await
+        .expect("a pty sheep's stdin pump must be listening");
+    timeout(PUMP_DEADLINE, ack)
+        .await
+        .expect("the whisper must be acknowledged")
+        .expect("the pump must answer rather than drop the acknowledgement")
+        .expect("the write must land");
+}
+
+/// The bytes `od` printed, as one space-separated string: its padding differs
+/// between systems.
+fn hex_bytes(line: &str) -> String {
+    line.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The next line the sheep logs, which must arrive in time.
+async fn next_log_line(io: &mut ProcIo) -> String {
+    timeout(PUMP_DEADLINE, io.logs.recv())
+        .await
+        .expect("the sheep must log a line")
+        .expect("the log pump must not end first")
+        .line
+}
+
+#[tokio::test]
+async fn a_whispered_line_reaches_a_pty_sheep_with_no_stdin_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut proc, mut io) = TokioRunner::new()
+        .spawn(&pty_spec(&dir, "read line; echo \"got:$line\""))
+        .unwrap();
+    assert!(!io.to_stdin.is_closed(), "a pty sheep takes a whisper");
+
+    whisper(&io, "hello").await;
+
+    // The terminal's echo of the typed line comes first, then the program's.
+    assert_eq!(next_log_line(&mut io).await, "hello");
+    assert_eq!(next_log_line(&mut io).await, "got:hello");
+    timeout(PUMP_DEADLINE, proc.wait())
+        .await
+        .expect("the script must exit once it has its line");
+}
+
+#[tokio::test]
+async fn a_pty_sheep_reading_raw_input_sees_a_carriage_return() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = "stty raw -echo; echo ready; dd bs=1 count=3 2>/dev/null | od -An -tx1";
+    let (mut proc, mut io) = TokioRunner::new().spawn(&pty_spec(&dir, script)).unwrap();
+    // Raw mode is set before this line prints, so the whisper is not cooked.
+    assert_eq!(next_log_line(&mut io).await, "ready");
+
+    whisper(&io, "hi").await;
+
+    assert_eq!(hex_bytes(&next_log_line(&mut io).await), "68 69 0d");
+    timeout(PUMP_DEADLINE, proc.wait())
+        .await
+        .expect("the script must exit once it has its bytes");
+}
+
+#[tokio::test]
+async fn a_piped_sheep_still_gets_a_newline() {
+    let dir = tempfile::tempdir().unwrap();
+    let spec = SpawnSpec {
+        program: "/bin/sh".to_string(),
+        args: vec![
+            "-c".to_string(),
+            "dd bs=1 count=3 2>/dev/null | od -An -tx1".to_string(),
+        ],
+        out_file: dir.path().join("out.log"),
+        err_file: dir.path().join("err.log"),
+        stdin: true,
+        ..Default::default()
+    };
+    let (mut proc, mut io) = TokioRunner::new().spawn(&spec).unwrap();
+
+    whisper(&io, "hi").await;
+
+    assert_eq!(hex_bytes(&next_log_line(&mut io).await), "68 69 0a");
+    timeout(PUMP_DEADLINE, proc.wait())
+        .await
+        .expect("the script must exit once it has its bytes");
 }

@@ -7,12 +7,13 @@ use core::task::{Context, Poll, ready};
 use std::io;
 use std::os::fd::OwnedFd;
 use std::process::Stdio;
+use std::sync::Arc;
 
 use rustix::fs::{self, Mode, OFlags};
 use rustix::pty;
 use rustix::termios::{self, Winsize};
 use tokio::io::unix::AsyncFd;
-use tokio::io::{AsyncRead, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::process::{ChildStdout, Command};
 
 use super::ansi::AnsiLines;
@@ -47,8 +48,10 @@ fn open_master() -> io::Result<OwnedFd> {
 }
 
 /// The master end of a sheep's terminal, registered with the reactor.
+///
+/// Shared, so the reader and the [`PtyWriter`] work one descriptor.
 pub(super) struct PtyMaster {
-    fd: AsyncFd<OwnedFd>,
+    fd: Arc<AsyncFd<OwnedFd>>,
 }
 
 /// Opens a pair sized [`PTY_ROWS`] by [`PTY_COLS`]: the master the shepherd
@@ -87,7 +90,7 @@ pub(super) fn open() -> io::Result<(PtyMaster, OwnedFd)> {
     // descriptor `register` asks for, so the unsoundness does not apply.
     #[allow(deprecated, reason = "register needs a newer tokio floor")]
     let fd = AsyncFd::new(master)?;
-    Ok((PtyMaster { fd }, slave))
+    Ok((PtyMaster { fd: Arc::new(fd) }, slave))
 }
 
 /// Puts `command`'s child on a new terminal: the slave as its fd 0, 1 and 2
@@ -142,6 +145,47 @@ impl PtyMaster {
     /// The master as an [`AsyncRead`] of what the child wrote.
     pub(super) fn into_reader(self) -> PtyReader {
         PtyReader { master: self }
+    }
+
+    /// An [`AsyncWrite`] of keys to the child, over the same master.
+    pub(super) fn writer(&self) -> PtyWriter {
+        PtyWriter {
+            fd: Arc::clone(&self.fd),
+        }
+    }
+}
+
+/// Keys typed to the child's terminal: what its fd 0 reads, after the line
+/// discipline.
+pub(super) struct PtyWriter {
+    fd: Arc<AsyncFd<OwnedFd>>,
+}
+
+impl AsyncWrite for PtyWriter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = self.get_mut();
+        loop {
+            let mut ready = ready!(this.fd.poll_write_ready(cx))?;
+            let wrote =
+                ready.try_io(|fd| rustix::io::write(fd.get_ref(), buf).map_err(io::Error::from));
+            if let Ok(result) = wrote {
+                return Poll::Ready(result);
+            }
+        }
+    }
+
+    /// A write to the master is already with the line discipline.
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    /// The master stays open for the reader, so there is nothing to close.
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
     }
 }
 
