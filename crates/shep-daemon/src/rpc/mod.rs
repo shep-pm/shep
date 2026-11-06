@@ -56,7 +56,7 @@ pub(crate) use lamb_signal::{OsPidSignals, PidSignals};
 
 mod log_tail;
 mod pty_stream;
-pub(crate) use pty_stream::PtyStream;
+pub(crate) use pty_stream::{PtyStream, PtyWriter};
 
 #[cfg(test)]
 use error::rpc_error;

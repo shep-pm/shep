@@ -271,3 +271,30 @@ async fn a_second_attach_on_one_connection_is_refused() {
     );
     assert_eq!(h.runner.pty_subscribers(0), 1, "the first stream is intact");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_connection_may_attach_again_the_moment_it_reads_pty_end() {
+    let h = harness(vec![ProcScript::never_exits()]);
+    start_pty_web(&h).await;
+    let mut client = client_of(&h).await;
+    ask(&mut client, 2, attach("web", 24, 80))
+        .await
+        .result
+        .unwrap();
+    h.runner.pty_end(0);
+    assert_eq!(
+        next_event(&mut client).await,
+        BusEvent::PtyEnd {
+            name: "web".to_string()
+        }
+    );
+
+    // The terminal is gone, so this attach is refused, but for that and not
+    // for the stream that has just ended.
+    let reply = ask(&mut client, 3, attach("web", 24, 80)).await;
+    let Err(err) = reply.result else {
+        panic!("a closed terminal cannot be attached")
+    };
+    assert_eq!(err.message, "sheep web has no pty: set pty = true");
+}

@@ -1,5 +1,8 @@
 //! One attached connection's view of a sheep's pty, as bus events.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use bytes::{Bytes, BytesMut};
 use tokio::sync::broadcast::{self, error::RecvError};
 use tokio::sync::mpsc;
@@ -88,10 +91,17 @@ impl PtyStream {
     /// Writes every event to `out` from a task of its own, until the end was
     /// sent or the connection stopped taking frames.
     ///
-    /// Aborting the task drops the stream, and with it the subscription.
-    pub(crate) fn forward(mut self, out: mpsc::Sender<Bytes>) -> JoinHandle<()> {
-        tokio::spawn(async move {
+    /// Aborting the writer drops the stream, and with it the subscription.
+    pub(crate) fn forward(mut self, out: mpsc::Sender<Bytes>) -> PtyWriter {
+        let ended = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&ended);
+        let task = tokio::spawn(async move {
             while let Some(event) = self.next().await {
+                // Before the frame is queued: the client can answer it, and
+                // the answer must find the writer already over.
+                if matches!(event, BusEvent::PtyEnd { .. }) {
+                    flag.store(true, Ordering::Release);
+                }
                 let Ok(frame) = encode_frame(&event) else {
                     return;
                 };
@@ -99,7 +109,8 @@ impl PtyStream {
                     return;
                 }
             }
-        })
+        });
+        PtyWriter { task, ended }
     }
 
     fn out(&self, data: String) -> BusEvent {
@@ -134,5 +145,28 @@ impl PtyStream {
                 }
             }
         }
+    }
+}
+
+/// The task writing one attach's events to its connection.
+#[derive(Debug)]
+pub(crate) struct PtyWriter {
+    task: JoinHandle<()>,
+    ended: Arc<AtomicBool>,
+}
+
+impl PtyWriter {
+    /// Is the writer still sending, so that another attach would be a second
+    /// stream on the connection?
+    ///
+    /// False from the moment `PtyEnd` is queued, not from the moment the task
+    /// is next polled: a client that reads `PtyEnd` may attach at once.
+    pub(crate) fn is_live(&self) -> bool {
+        !self.ended.load(Ordering::Acquire) && !self.task.is_finished()
+    }
+
+    /// Stops the writer and drops the subscription.
+    pub(crate) fn abort(self) {
+        self.task.abort();
     }
 }

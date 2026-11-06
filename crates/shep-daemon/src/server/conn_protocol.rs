@@ -5,7 +5,9 @@ use super::peer_auth::{check_peer, daemon_uid, peer_pid};
 use super::server_lifecycle::{CONN_QUEUE, HANDSHAKE_TIMEOUT_MS};
 use super::tracked_codec::TrackedCodec;
 use crate::bus::TopicFilter;
-use crate::rpc::{Outcome, RpcContext, check_carried, dispatch, spawn_checked_forwarder};
+use crate::rpc::{
+    Outcome, PtyWriter, RpcContext, check_carried, dispatch, spawn_checked_forwarder,
+};
 use crate::supervisor::ConnId;
 use bytes::{Bytes, BytesMut};
 use core::time::Duration;
@@ -115,8 +117,11 @@ async fn converse(
     // aborted rather than dropped: dropping a `JoinHandle` detaches the task,
     // which keeps its clone of `out` alive, which keeps `write_loop` from ever
     // seeing every sender gone and hangs `handle_conn`'s `writer.await`.
-    for task in streams.events.into_iter().chain(streams.pty) {
+    if let Some(task) = streams.events {
         task.abort();
+    }
+    if let Some(writer) = streams.pty {
+        writer.abort();
     }
     outcome
 }
@@ -127,7 +132,7 @@ struct Streams {
     /// The `Subscribe` forwarder.
     events: Option<JoinHandle<()>>,
     /// The `Attach` writer.
-    pty: Option<JoinHandle<()>>,
+    pty: Option<PtyWriter>,
 }
 
 async fn read_loop(
@@ -146,7 +151,7 @@ async fn read_loop(
         // Refused before dispatch, which would resize the first sheep's
         // terminal for an attach it then turns away.
         if matches!(envelope.body, Request::Attach { .. })
-            && streams.pty.as_ref().is_some_and(|task| !task.is_finished())
+            && streams.pty.as_ref().is_some_and(PtyWriter::is_live)
         {
             let refusal = Reply {
                 id: envelope.id,
