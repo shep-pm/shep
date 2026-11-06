@@ -66,10 +66,10 @@ async fn next_event(client: &mut Client) -> BusEvent {
 }
 
 #[cfg(unix)]
-fn pty_out(name: &str, data: &str) -> BusEvent {
+fn pty_out(name: &str, data: &[u8]) -> BusEvent {
     BusEvent::PtyOut {
         name: name.to_string(),
-        data: data.to_string(),
+        data: data.to_vec(),
     }
 }
 
@@ -89,8 +89,28 @@ async fn attach_streams_the_sheeps_output_as_pty_out_events() {
     h.runner.pty_emit(0, b"hello \x1b[1mworld\x1b[0m");
     assert_eq!(
         next_event(&mut client).await,
-        pty_out("web", "hello \x1b[1mworld\x1b[0m")
+        pty_out("web", b"hello \x1b[1mworld\x1b[0m")
     );
+}
+
+/// A sheep that writes Latin-1 or binary to its terminal gets out what it
+/// wrote, not what UTF-8 makes of it.
+#[cfg(unix)]
+#[tokio::test]
+async fn pty_out_carries_bytes_that_are_not_utf8() {
+    let h = harness(vec![ProcScript::never_exits()]);
+    start_pty_web(&h).await;
+    let mut client = client_of(&h).await;
+    ask(&mut client, 2, attach("web", 24, 80))
+        .await
+        .result
+        .unwrap();
+
+    // 0x9b starts no character, 0xc0 0xc1 is an overlong pair that UTF-8
+    // refuses, and 0xff is no character at all.
+    let written: Vec<u8> = vec![0x9b, 0xc0, 0xc1, b'x', 0xff];
+    h.runner.pty_emit(0, &written);
+    assert_eq!(next_event(&mut client).await, pty_out("web", &written));
 }
 
 #[cfg(unix)]
@@ -213,9 +233,11 @@ async fn attaching_a_sheep_without_pty_is_refused_by_name() {
     assert_eq!(err.message, "no sheep named ghost");
 }
 
+/// A read of the master can stop inside a multibyte character. Nothing waits
+/// for the rest of it: each read goes out as it arrived, in order.
 #[cfg(unix)]
 #[tokio::test]
-async fn a_split_multibyte_character_is_sent_whole() {
+async fn a_character_split_across_two_reads_arrives_as_two_chunks() {
     let h = harness(vec![ProcScript::never_exits()]);
     start_pty_web(&h).await;
     let mut client = client_of(&h).await;
@@ -226,9 +248,9 @@ async fn a_split_multibyte_character_is_sent_whole() {
 
     // `ï` is 0xC3 0xAF: the first read ends between its two bytes.
     h.runner.pty_emit(0, b"na\xc3");
-    assert_eq!(next_event(&mut client).await, pty_out("web", "na"));
+    assert_eq!(next_event(&mut client).await, pty_out("web", b"na\xc3"));
     h.runner.pty_emit(0, b"\xaf!");
-    assert_eq!(next_event(&mut client).await, pty_out("web", "\u{ef}!"));
+    assert_eq!(next_event(&mut client).await, pty_out("web", b"\xaf!"));
 }
 
 #[cfg(unix)]
@@ -244,7 +266,7 @@ async fn the_stream_ends_with_pty_end_when_the_sheep_exits() {
 
     h.runner.pty_emit(0, b"bye");
     h.runner.pty_end(0);
-    assert_eq!(next_event(&mut client).await, pty_out("web", "bye"));
+    assert_eq!(next_event(&mut client).await, pty_out("web", b"bye"));
     assert_eq!(
         next_event(&mut client).await,
         BusEvent::PtyEnd {

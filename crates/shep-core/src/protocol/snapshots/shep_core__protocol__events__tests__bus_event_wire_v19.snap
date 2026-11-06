@@ -334,7 +334,21 @@ expression: events
     "event": "pty_out",
     "data": {
       "name": "web",
-      "data": "\u001b[32mok\u001b[0m\r\n"
+      "data": [
+        27,
+        91,
+        51,
+        50,
+        111,
+        107,
+        27,
+        91,
+        48,
+        109,
+        13,
+        10,
+        155
+      ]
     }
   },
   {
