@@ -449,6 +449,7 @@ impl ProcessRunner for TokioRunner {
             err: err_pipe.as_ref().map(AsRawFd::as_raw_fd),
             stdin: stdin_pipe.as_ref().map(AsRawFd::as_raw_fd),
             channel: channel.as_ref().map(AsRawFd::as_raw_fd),
+            pty: None,
         };
         spawn_log_pump(
             out_pipe,
@@ -875,6 +876,7 @@ impl ProcessRunner for TokioRunner {
             // Read further up, before the daemon end moved into its pumps.
             // Nothing on `child` names it: the child's side is fd 3.
             channel: channel_fd,
+            pty: None,
         };
         #[cfg(not(unix))]
         let pipes = PipeFds;

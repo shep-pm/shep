@@ -1,6 +1,7 @@
 use super::super::{Handover, SheepFd};
 use super::adopt_descriptors::{
-    adopt_channel, adopt_dog_link, adopt_fd, adopt_listener, adopt_log, adopt_pipe, adopt_stdin,
+    adopt_channel, adopt_dog_link, adopt_fd, adopt_listener, adopt_log, adopt_pipe, adopt_pty,
+    adopt_stdin,
 };
 use crate::sys;
 use std::io;
@@ -74,6 +75,7 @@ pub fn dry_run(blob: &Handover) -> io::Result<()> {
                     SheepFd::Stdin => adopt_stdin(Some(dup), name).map(drop),
                     SheepFd::Channel => adopt_channel(Some(dup), name).map(drop),
                     SheepFd::DogLink => adopt_dog_link(Some(dup), name).map(drop),
+                    SheepFd::Pty => adopt_pty(Some(dup), name).map(drop),
                 },
             )?;
         }
@@ -183,6 +185,7 @@ mod tests {
                         stdin: None,
                         channel: None,
                         dog_link: None,
+                        pty: None,
                     },
                 ),
                 carried_slot(
@@ -195,6 +198,7 @@ mod tests {
                         stdin: None,
                         channel: None,
                         dog_link: None,
+                        pty: None,
                     },
                 ),
             ],
@@ -382,9 +386,9 @@ mod tests {
     /// The rehearsal and the adoption must agree, slot by slot.
     ///
     /// A rehearsal that passes a blob the successor refuses still reaches
-    /// the `execve`. Every slot is walked because four mechanisms refuse
+    /// the `execve`. Every slot is walked because five mechanisms refuse
     /// them: a readable-pipe check, a writable-pipe check, a `getpeername`,
-    /// and for the two log slots no kind check at all.
+    /// an `isatty`, and for the two log slots no kind check at all.
     #[tokio::test]
     async fn the_rehearsal_and_the_adoption_agree_on_every_slot() {
         use std::os::fd::AsRawFd as _;
@@ -397,6 +401,7 @@ mod tests {
             SheepFd::Stdin,
             SheepFd::Channel,
             SheepFd::DogLink,
+            SheepFd::Pty,
         ] {
             let predecessor = Predecessor::new();
             let wrong = std::fs::File::open("/dev/null").unwrap();
@@ -411,6 +416,7 @@ mod tests {
                 SheepFd::Stdin => fds.stdin = wrong,
                 SheepFd::Channel => fds.channel = wrong,
                 SheepFd::DogLink => fds.dog_link = wrong,
+                SheepFd::Pty => fds.pty = wrong,
             }
 
             assert_eq!(

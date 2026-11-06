@@ -150,6 +150,7 @@ async fn a_report_names_the_stdin_write_end_it_was_told_about() {
         err: None,
         stdin: Some(daemon_end.as_raw_fd()),
         channel: None,
+        pty: None,
     };
     spawn_log_pump(
         Some(out_reader),
@@ -276,6 +277,7 @@ async fn a_report_names_the_shepherd_channel_it_was_told_about() {
         err: None,
         stdin: None,
         channel: Some(daemon_end.as_raw_fd()),
+        pty: None,
     };
     spawn_log_pump(
         Some(out_reader),

@@ -150,6 +150,7 @@ impl Predecessor {
                 stdin: Some(self.stdin_write.as_raw_fd()),
                 channel: Some(self.channel.as_raw_fd()),
                 dog_link: None,
+                pty: None,
             })],
             DaemonFds {
                 listener: self.listener.as_raw_fd(),
@@ -225,6 +226,7 @@ pub(super) fn adopt_a_copy_keeping(
             stdin: sheep.fds.stdin.map(|fd| dups.of(fd)).transpose()?,
             channel: sheep.fds.channel.map(|fd| dups.of(fd)).transpose()?,
             dog_link: sheep.fds.dog_link.map(|fd| dups.of(fd)).transpose()?,
+            pty: sheep.fds.pty.map(|fd| dups.of(fd)).transpose()?,
         };
     }
     for listener in copy.listeners.iter_mut().flatten() {

@@ -287,6 +287,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             },
         );
 
@@ -323,6 +324,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             },
         );
 
@@ -387,6 +389,7 @@ mod tests {
                     stdin: Some(self.stdin.as_raw_fd()),
                     channel: Some(self.channel.as_raw_fd()),
                     dog_link: None,
+                    pty: None,
                 },
             )
         }
@@ -481,6 +484,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             },
         );
 
@@ -508,6 +512,7 @@ mod tests {
                 stdin: None,
                 channel: None,
                 dog_link: None,
+                pty: None,
             },
         );
         blob.version = VERSION + 1;

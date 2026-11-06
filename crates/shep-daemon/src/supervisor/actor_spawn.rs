@@ -527,6 +527,9 @@ impl<R: ProcessRunner> Actor<R> {
             stdin_pipe,
             channel,
             dog_link,
+            // The runner has nowhere to take a master yet, and no blob names
+            // one, so dropping it closes nothing.
+            pty: _,
         } = sheep;
         let app = normalize(carried.app().clone()).map_err(|source| AdoptError::Spec {
             sheep: carried.name().to_string(),
