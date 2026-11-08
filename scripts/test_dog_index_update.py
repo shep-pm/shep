@@ -78,6 +78,55 @@ def manifest_text(permissions: list | None = None, **extra: object) -> str:
     return json.dumps(body)
 
 
+class VersionOrderTests(unittest.TestCase):
+    """`newer`, which is what decides whether a run would set a row back.
+
+    Semver 2.0 precedence, build metadata ignored: a row at `0.3.0` is newer
+    than a run for `0.2.0`, and a run for `0.2.0` is not newer than itself.
+    """
+
+    def test_numeric_parts_compare_as_numbers(self) -> None:
+        self.assertTrue(dog_index_update.newer("0.10.0", "0.9.0"))
+        self.assertFalse(dog_index_update.newer("0.9.0", "0.10.0"))
+        self.assertTrue(dog_index_update.newer("10.0.0", "2.0.0"))
+        self.assertFalse(dog_index_update.newer("1.0.0", "1.0.0"))
+
+    def test_a_release_is_newer_than_its_prerelease(self) -> None:
+        self.assertTrue(dog_index_update.newer("1.0.0", "1.0.0-rc.1"))
+        self.assertFalse(dog_index_update.newer("1.0.0-rc.1", "1.0.0"))
+        self.assertTrue(dog_index_update.newer("1.0.0-rc.2", "1.0.0-rc.1"))
+        self.assertFalse(dog_index_update.newer("1.0.0-rc.1", "1.0.0-rc.2"))
+
+    def test_build_metadata_is_ignored(self) -> None:
+        self.assertFalse(dog_index_update.newer("1.0.0+a", "1.0.0+b"))
+        self.assertFalse(dog_index_update.newer("1.0.0+b", "1.0.0+a"))
+        self.assertTrue(dog_index_update.newer("1.0.1+b", "1.0.0+a"))
+
+    def test_prerelease_identifiers_compare_by_semver_precedence(self) -> None:
+        # Semver 2.0 section 11: a longer set outranks its own prefix, a numeric
+        # identifier ranks below an alphanumeric one, and `beta.11` outranks
+        # `beta.2` because the identifiers are numbers.
+        for older, newer in (
+            ("1.0.0-alpha", "1.0.0-alpha.1"),
+            ("1.0.0-1", "1.0.0-alpha"),
+            ("1.0.0-alpha.1", "1.0.0-alpha.beta"),
+            ("1.0.0-alpha.beta", "1.0.0-beta"),
+            ("1.0.0-beta.2", "1.0.0-beta.11"),
+            ("1.0.0-beta.11", "1.0.0"),
+        ):
+            with self.subTest(older=older, newer=newer):
+                self.assertTrue(dog_index_update.newer(newer, older))
+                self.assertFalse(dog_index_update.newer(older, newer))
+
+    def test_a_version_that_is_not_semver_is_refused(self) -> None:
+        # `resolve` only accepts `v<major>.<minor>.<patch>`, so a row or a
+        # pending branch holding anything else is a broken index, not a version
+        # order to guess at.
+        for text in ("1.2", "v1.2.3", "1.2.3-", "1.2.3+build space", "01.2.3", "1.2.3-rc..1", ""):
+            with self.subTest(text=text), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "semver"):
+                dog_index_update.newer(text, "1.0.0")
+
+
 class ApplyTests(unittest.TestCase):
     def apply(
         self,
@@ -307,6 +356,75 @@ class ApplyTests(unittest.TestCase):
         twice = dog_index_update.apply(once, "shep-example", "0.2.0", hashes, REPOSITORY)
         self.assertEqual(once, twice)
 
+    # Three releases in one day used to open three pull requests at once, and
+    # merging the oldest after the newest set the row back to the oldest's
+    # hashes. The row is the thing being protected here.
+    def test_a_version_older_than_the_row_is_refused(self) -> None:
+        current = {"kind": "cargo", "version": "0.3.0", "sha256": {LINUX: HASH_A}}
+        with self.assertRaisesRegex(dog_index_update.IndexUpdateError, "0.3.0"):
+            self.apply(index_text(row(source=current)), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_B}))
+
+    def test_a_version_older_than_the_row_is_refused_by_a_prerelease_too(self) -> None:
+        current = {"kind": "cargo", "version": "1.0.0", "sha256": {LINUX: HASH_A}}
+        with self.assertRaisesRegex(dog_index_update.IndexUpdateError, "1.0.0"):
+            self.apply(index_text(row(source=current)), "1.0.0-rc.2", sums("shep-example", "1.0.0-rc.2", {LINUX: HASH_B}))
+
+    def test_the_same_version_is_written_again(self) -> None:
+        # A re-run is not a step backwards: the release's assets changed and
+        # the version did not, so the hashes are what move.
+        current = {"kind": "cargo", "version": "0.2.0", "sha256": {LINUX: HASH_A}}
+        doc = self.apply(index_text(row(source=current)), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_B}))
+        self.assertEqual(self.source_of(doc), {"kind": "cargo", "version": "0.2.0", "sha256": {LINUX: HASH_B}})
+
+    def test_a_version_newer_than_the_row_is_written(self) -> None:
+        current = {"kind": "cargo", "version": "0.9.0", "sha256": {LINUX: HASH_A}}
+        doc = self.apply(index_text(row(source=current)), "0.10.0", sums("shep-example", "0.10.0", {LINUX: HASH_B}))
+        self.assertEqual(self.source_of(doc)["version"], "0.10.0")
+
+    def test_a_pending_version_newer_than_this_one_is_refused(self) -> None:
+        # `--pending` is the row an open pull request for this dog would merge.
+        # Writing this one over it would leave that pull request holding the
+        # newer version's row against a main that no longer has it.
+        with self.assertRaisesRegex(dog_index_update.IndexUpdateError, "0.3.0"):
+            dog_index_update.apply(
+                index_text(row()),
+                "shep-example",
+                "0.2.0",
+                sums("shep-example", "0.2.0", {LINUX: HASH_A}),
+                REPOSITORY,
+                None,
+                "0.3.0",
+            )
+
+    def test_a_pending_version_this_one_outranks_is_written(self) -> None:
+        out = dog_index_update.apply(
+            index_text(row()),
+            "shep-example",
+            "0.4.0",
+            sums("shep-example", "0.4.0", {LINUX: HASH_A}),
+            REPOSITORY,
+            None,
+            "0.3.0",
+        )
+        self.assertEqual(json.loads(out)["dogs"][0]["source"]["version"], "0.4.0")
+
+    def test_a_pending_version_equal_to_this_one_is_written_again(self) -> None:
+        out = dog_index_update.apply(
+            index_text(row()),
+            "shep-example",
+            "0.3.0",
+            sums("shep-example", "0.3.0", {LINUX: HASH_B}),
+            REPOSITORY,
+            None,
+            "0.3.0",
+        )
+        self.assertEqual(json.loads(out)["dogs"][0]["source"]["sha256"], {LINUX: HASH_B})
+
+    def test_a_row_with_a_version_that_is_not_semver_is_refused(self) -> None:
+        current = {"kind": "cargo", "version": "current", "sha256": {LINUX: HASH_A}}
+        with self.assertRaisesRegex(dog_index_update.IndexUpdateError, "semver"):
+            self.apply(index_text(row(source=current)), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_B}))
+
     def test_output_ends_in_one_newline_and_indents_by_two(self) -> None:
         out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}), REPOSITORY)
         self.assertTrue(out.endswith("}\n") and not out.endswith("\n\n"))
@@ -410,6 +528,55 @@ class CommandLineTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("not a sha256sum line", err)
             self.assertEqual(index.read_text(), before)
+
+    # Exit 3 is "a newer version is already approved or pending", which is not
+    # this run's failure: the index is right as it stands and the run wrote
+    # nothing. `index-pr` ends green on it rather than failing a dog's release.
+    def test_a_newer_pending_version_exits_3(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            before = index_text(row())
+            index.write_text(before)
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+            code, _, err = self.run_main(
+                str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY, "--pending", "0.3.0"
+            )
+            self.assertEqual(code, 3)
+            self.assertIn("0.3.0", err)
+            self.assertEqual(index.read_text(), before)
+
+    def test_a_row_already_at_a_newer_version_exits_3(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            index.write_text(
+                index_text(row(source={"kind": "cargo", "version": "0.10.0", "sha256": {LINUX: HASH_A}}))
+            )
+            before = index.read_text()
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.9.0", {LINUX: HASH_B}))
+            code, _, err = self.run_main(str(index), "shep-example", "0.9.0", str(hashes), REPOSITORY)
+            self.assertEqual(code, 3)
+            self.assertIn("0.10.0", err)
+            self.assertEqual(index.read_text(), before)
+
+    def test_a_pending_version_this_one_outranks_is_written(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            index.write_text(index_text(row()))
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.4.0", {LINUX: HASH_A}))
+            code, out, err = self.run_main(
+                str(index), "shep-example", "0.4.0", str(hashes), REPOSITORY, "--pending", "0.3.0"
+            )
+            self.assertEqual((code, err), (0, ""))
+            self.assertIn("shep-example 0.4.0", out)
+            self.assertEqual(json.loads(index.read_text())["dogs"][0]["source"]["version"], "0.4.0")
+
+    def test_a_pending_flag_with_no_version_after_it_is_a_usage_error(self) -> None:
+        code, _, err = self.run_main("a", "b", "c", "d", "e", "--pending")
+        self.assertEqual(code, 1)
+        self.assertIn("usage: dog-index-update.py", err)
 
     def test_a_sixth_argument_names_the_manifest_and_its_permissions_are_written(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -672,7 +839,6 @@ class WorkflowTests(unittest.TestCase):
         self.assertLess(fetch.index("exit 0"), fetch.index("gh run download"))
         write = self.step("index-pr", "dog-index-update.py")
         self.assertIn("MANIFEST", write)
-
 
 if __name__ == "__main__":
     unittest.main()
