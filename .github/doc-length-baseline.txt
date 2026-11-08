@@ -130,7 +130,6 @@
 13 crates/shep-cli/tests/term_panic_order.rs //! Proves `lookout::term::install_panic_hook`'s ordering: `restore()`
 
 12 crates/shep-tree/src/job.rs //! A Windows job object: the substitute for a unix process group.
-12 crates/shep-tree/src/job.rs // Zeroed, then left zeroed: every limit flag stays off. Setting the
 16 crates/shep-tree/src/job.rs /// Assigns an already-spawned process to this job.
 
 19 crates/shep-tree/src/lib.rs //! Signal a process group, own a Windows job and stop a child and everything

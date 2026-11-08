@@ -22,6 +22,8 @@ fn main() -> std::io::Result<()> {
 
 - `Tree::spawn` puts the child in a process group of its own (unix) or a job
   object (Windows).
+- `Tree::spawn_kill_on_close` is that spawn with a Windows job that ends its
+  members when the last handle to it closes. Unix has no kernel equivalent.
 - `Tree::stop` signals the tree, polls for the child to exit within the grace,
   then kills the whole tree, so a descendant that ignored the signal does not
   outlive its leader.
