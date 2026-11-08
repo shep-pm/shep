@@ -282,7 +282,9 @@ Whether that trade is worth it is the maintainer's call.
 
 **Every release after the first is one merge.** release-plz opens the pull
 request, you merge it, and the resulting push tags, releases and uploads.
-Nothing below is something you run.
+Nothing below is something you run. With the repository variable
+`RELEASE_AUTO_MERGE` set to `true`, the workflow merges a release pull request
+whose guard passed, and the repository's "Allow auto-merge" setting must be on.
 
 What follows is how 0.1.0 was done by hand, kept because the checks in it are
 the ones release-plz now performs for you, and because knowing what they were

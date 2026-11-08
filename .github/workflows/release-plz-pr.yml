@@ -1,7 +1,8 @@
 name: Release PR
 # Maintains the pull request that bumps the version and writes the changelog.
-# Merging it is a hand decision: several changes to main stack into one
-# release that way, rather than every merge cutting its own.
+# Merging it is a hand decision unless the repo's RELEASE_AUTO_MERGE variable
+# is `true`: several changes to main stack into one release that way, rather
+# than every merge cutting its own.
 #
 # Squash that merge, never a merge commit. release-plz substitutes a merge
 # commit for its pull request's head before packaging, so `cargo publish`
@@ -180,6 +181,7 @@ jobs:
           new_head="$(read_out release_head)"
           changed="$(read_out changed)"
           new_head="${new_head:-$head_sha}"
+          echo "merge_head=$new_head" >> "$GITHUB_OUTPUT"
           # `manifest_version` returns the line with its spaces gone, so the
           # quotes come off here. These three only matter if the script
           # succeeded without reporting, which is a broken script rather than a
@@ -290,3 +292,18 @@ jobs:
             echo "::error::Left open for a human: close it, or land something worth releasing first."
             exit 1
           fi
+
+      # Only where the repo's RELEASE_AUTO_MERGE variable is `true`, and only
+      # past a guard that passed. Squash, for the reason at the top.
+      # --match-head-commit binds the merge to the head the guard judged, so a
+      # push in between refuses instead of merging.
+      - name: Auto-merge the release PR
+        if: ${{ steps.release-plz.outputs.prs_created == 'true' && vars.RELEASE_AUTO_MERGE == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          PR_NUMBER: ${{ fromJSON(steps.release-plz.outputs.pr).number }}
+          HEAD_SHA: ${{ steps.guard.outputs.merge_head }}
+        run: |
+          set -euo pipefail
+          gh pr merge --auto --squash --match-head-commit "$HEAD_SHA" "$PR_NUMBER" \
+            || gh pr merge --squash --match-head-commit "$HEAD_SHA" "$PR_NUMBER"
