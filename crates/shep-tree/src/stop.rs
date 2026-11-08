@@ -28,7 +28,8 @@ enum Exit {
 ///
 /// On unix the tree is the child's process group; on Windows it is a job
 /// object. Neither is closed or killed when a `Tree` drops: a child outlives
-/// the process that started it, as it would from a shell.
+/// the process that started it, as it would from a shell. A tree from
+/// [`Tree::spawn_kill_on_close`] ends its child on Windows when it drops.
 #[derive(Debug)]
 pub struct Tree {
     #[cfg(windows)]
@@ -53,24 +54,50 @@ impl Tree {
     /// job cannot be created or the child assigned to it. A child spawned and
     /// then not assigned is killed before the error returns.
     pub fn spawn(command: &mut Command) -> io::Result<(Self, Child)> {
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt as _;
-            let child = command.process_group(0).spawn()?;
-            Ok((Self {}, child))
+        Self::spawn_with(command, false)
+    }
+
+    /// Spawns `command` as the leader of a tree that ends with this `Tree`.
+    ///
+    /// [`Tree::spawn`] with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` on its job:
+    /// dropping the `Tree` ends the child and everything in its job, a crash of
+    /// the caller included.
+    ///
+    /// Unix has no kernel equivalent, so there this is [`Tree::spawn`] and
+    /// dropping the `Tree` ends nothing. A caller that needs the guarantee
+    /// there arranges its own, with a reaper or `PR_SET_PDEATHSIG`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Tree::spawn`].
+    pub fn spawn_kill_on_close(command: &mut Command) -> io::Result<(Self, Child)> {
+        Self::spawn_with(command, true)
+    }
+
+    /// The spawn both constructors share. `kill_on_close` decides the Windows
+    /// job and means nothing on unix, which has no kernel equivalent.
+    #[cfg(unix)]
+    fn spawn_with(command: &mut Command, _kill_on_close: bool) -> io::Result<(Self, Child)> {
+        use std::os::unix::process::CommandExt as _;
+        let child = command.process_group(0).spawn()?;
+        Ok((Self {}, child))
+    }
+
+    #[cfg(windows)]
+    fn spawn_with(command: &mut Command, kill_on_close: bool) -> io::Result<(Self, Child)> {
+        use std::os::windows::io::AsRawHandle as _;
+        let job = if kill_on_close {
+            crate::job::Job::create_kill_on_close()?
+        } else {
+            crate::job::Job::create()?
+        };
+        let mut child = command.spawn()?;
+        if let Err(error) = job.assign(child.as_raw_handle()) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
         }
-        #[cfg(windows)]
-        {
-            use std::os::windows::io::AsRawHandle as _;
-            let job = crate::job::Job::create()?;
-            let mut child = command.spawn()?;
-            if let Err(error) = job.assign(child.as_raw_handle()) {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(error);
-            }
-            Ok((Self { job }, child))
-        }
+        Ok((Self { job }, child))
     }
 
     /// Stops `child` and everything in its tree, and returns how `child` exited.
@@ -82,12 +109,12 @@ impl Tree {
     /// 3. Kill the whole tree, even if `child` has already exited, so a
     ///    descendant that ignored `signal` does not outlive its leader.
     ///
-    /// `child` must be the one [`Tree::spawn`] returned with this tree. The
-    /// call blocks for up to `grace` and then until the kill lands.
+    /// `child` must be the one [`Tree::spawn`] or [`Tree::spawn_kill_on_close`]
+    /// returned with this tree. The call blocks for up to `grace`, then until
+    /// the kill lands.
     ///
-    /// Windows has no signal to deliver to a foreign process, so step 1 there
-    /// does nothing and `child` gets the grace to exit by itself;
-    /// [`Signal::Kill`] skips the wait.
+    /// Windows has no signal to deliver to a foreign process, so step 1 does
+    /// nothing and `child` gets the grace; [`Signal::Kill`] skips the wait.
     ///
     /// A child that has left its group with `setpgid` or `setsid` is signalled
     /// and killed by its own pid as well as the group, which its descendants
@@ -224,9 +251,18 @@ mod tests {
     /// Spawns `script` under `sh` in a tree, with stdout piped, and returns
     /// the first line it prints, which scripts print once they are ready.
     fn spawn_ready(script: &str) -> (Tree, Child, String) {
+        spawn_ready_with(script, Tree::spawn)
+    }
+
+    /// The same through a chosen spawn, so a test can reach
+    /// [`Tree::spawn_kill_on_close`].
+    fn spawn_ready_with(
+        script: &str,
+        spawn: fn(&mut Command) -> io::Result<(Tree, Child)>,
+    ) -> (Tree, Child, String) {
         let mut command = Command::new("sh");
         command.args(["-c", script]).stdout(Stdio::piped());
-        let (tree, mut child) = Tree::spawn(&mut command).expect("sh must spawn");
+        let (tree, mut child) = spawn(&mut command).expect("sh must spawn");
         let mut line = String::new();
         BufReader::new(child.stdout.as_mut().unwrap())
             .read_line(&mut line)
@@ -347,6 +383,28 @@ mod tests {
     }
 
     #[test]
+    fn a_kill_on_close_tree_on_unix_is_stopped_by_stop() {
+        // unix has no kernel equivalent, so `stop` is what ends this tree. The
+        // grandchild ignores SIGTERM, so only the final kill can reach it.
+        let (tree, mut child, line) = spawn_ready_with(
+            r#"sh -c 'trap "" TERM; echo ready; while :; do sleep 1; done' & wait"#,
+            Tree::spawn_kill_on_close,
+        );
+        let _cleanup = Cleanup(child.id());
+        assert_eq!(line, "ready");
+        let mut stdout = child.stdout.take().unwrap();
+
+        tree.stop(&mut child, Signal::Term, Duration::from_secs(30))
+            .unwrap();
+
+        let (done, eof) = mpsc::channel();
+        std::thread::spawn(move || done.send(stdout.read_to_end(&mut Vec::new())));
+        eof.recv_timeout(Duration::from_secs(10))
+            .expect("a descendant outlived a kill-on-close tree")
+            .unwrap();
+    }
+
+    #[test]
     fn a_child_that_left_its_group_is_still_stopped() {
         // `perl`, since `setsid(1)` is absent on macOS. The child puts itself
         // in a group of its own, so the group `spawn` made is empty and every
@@ -383,5 +441,37 @@ mod tests {
 
         assert!(started.elapsed() >= grace, "the child was given its grace");
         assert_eq!(status.signal(), Some(9));
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    use super::*;
+
+    #[test]
+    fn a_kill_on_close_tree_ends_its_child_when_dropped() {
+        // A ten-minute `ping`, so an exit can only be the tree's doing.
+        let mut command = Command::new("cmd");
+        command
+            .args(["/C", "ping", "-n", "600", "127.0.0.1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let (tree, mut child) =
+            Tree::spawn_kill_on_close(&mut command).expect("cmd must be spawnable on Windows");
+
+        drop(tree);
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            assert!(
+                Instant::now() < deadline,
+                "the child outlived the Tree that spawned it"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 }
