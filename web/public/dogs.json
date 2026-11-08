@@ -48,14 +48,14 @@
       "category": "deploy",
       "source": {
         "kind": "cargo",
-        "version": "0.7.2",
+        "version": "0.7.3",
         "sha256": {
-          "aarch64-apple-darwin": "1d82e5a14b6644beaedb140375636e054beeb3fdc3461021e760234bc6aaac43",
-          "aarch64-unknown-linux-gnu": "c124bbd53c7eecfed0ecbfd168538463af8ba9c031959dc3ea8afc6cd1c8a9b2",
-          "aarch64-unknown-linux-musl": "5da4aa8d945a61b27d7941b93c471238b73afe1faec73cbf4d1da69ba6cfea02",
-          "x86_64-apple-darwin": "8acaf6dc1c257518475208371fbc56b69b99c407bd7645f9de2aa50b7608fa15",
-          "x86_64-unknown-linux-gnu": "48ceb0330b0db084d829b6ff72fa19c11493014a10c08fbb2770489cc426f4c0",
-          "x86_64-unknown-linux-musl": "c8bba2b55fbde21b308022e0bb998399cf45f53486a84755599127958fba85be"
+          "aarch64-apple-darwin": "7d99876418af2c789890698a062b1dea34bb63d45d742fd4cadbdaf438ea1750",
+          "aarch64-unknown-linux-gnu": "f557535d9dcd2436e94c2051724bbd8f4afff7c5a20ff693b4f4a251037c8f74",
+          "aarch64-unknown-linux-musl": "9afc47da134fda3619bc0d220ffa3fb4387222498aee2f4160d929031b20022b",
+          "x86_64-apple-darwin": "fa47ae5bbdf8d1635279bf46d3661449cf60e3341a74863c5ea4255ee792df9c",
+          "x86_64-unknown-linux-gnu": "77ca1d674bd9cb939575e5674f0e965101265737eb90579b78ca60ba2f3722c6",
+          "x86_64-unknown-linux-musl": "630c25b92541383e6d53642be636790393b94803d2e0dc20282ac853599539e9"
         },
         "permissions": [
           {
