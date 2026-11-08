@@ -523,29 +523,32 @@ jobs:
       - id: pending
         name: Read the row an open pull request would merge
         env:
-          GH_TOKEN: ${{ secrets.index-token }}
           PACKAGE: ${{ inputs.package }}
         run: |
           set -euo pipefail
           branch="dog-release/${PACKAGE}"
-          # A branch that does not exist answers 404, and so does a token that
-          # cannot see this repository. Only the first reads as "nothing is
-          # pending": reading the second that way would write a row over a
-          # newer one this run cannot see.
-          if ! content="$(gh api "repos/shep-pm/shep/contents/web/public/dogs.json" \
-            --field ref="$branch" --jq .content 2>&1)"; then
-            case "$content" in
-              *"Not Found"*)
-                echo "No ${branch} branch, so nothing is pending for ${PACKAGE}."
-                exit 0
-                ;;
-              *)
-                echo "::error::could not read the row on ${branch}: ${content}"
-                exit 1
-                ;;
-            esac
+          url="https://x-access-token:${INDEX_TOKEN}@github.com/shep-pm/shep.git"
+          # `git` and not the Contents API: `gh api --jq` answers the same way
+          # for a branch that is not there and a token that cannot read this
+          # repository, and only the first reads as "nothing is pending".
+          # `ls-remote` says them apart on its own, empty for a branch that
+          # does not exist and a non-zero exit for a repository it cannot read.
+          if ! refs="$(git ls-remote --heads "$url" "refs/heads/${branch}")"; then
+            echo "::error::could not read ${branch} from shep-pm/shep. The index row is not written."
+            exit 1
           fi
-          printf '%s' "$content" | tr -d '\n' | base64 -d > pending.json
+          if [ -z "$refs" ]; then
+            echo "No ${branch} branch, so nothing is pending for ${PACKAGE}."
+            exit 0
+          fi
+          if ! git -C shep fetch --quiet --depth 1 "$url" "refs/heads/${branch}"; then
+            echo "::error::${branch} exists and would not fetch. The index row is not written."
+            exit 1
+          fi
+          if ! git -C shep show --quiet FETCH_HEAD:web/public/dogs.json > pending.json; then
+            echo "::error::${branch} holds no web/public/dogs.json. The index row is not written."
+            exit 1
+          fi
           version="$(jq -r --arg package "$PACKAGE" \
             '[.dogs[] | select(.package == $package)][0].source.version // empty' pending.json)"
           [ -n "$version" ] || { echo "::error::${branch} holds no row for ${PACKAGE}"; exit 1; }

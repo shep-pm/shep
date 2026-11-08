@@ -886,12 +886,25 @@ class WorkflowTests(unittest.TestCase):
         # it, a run for an older version cannot know it is the older one.
         index_pr = self.job("index-pr")
         self.assertLess(
-            index_pr.index("contents/web/public/dogs.json"),
+            index_pr.index("git ls-remote"),
             index_pr.index("dog-index-update.py"),
         )
         write = self.step("index-pr", "dog-index-update.py")
         self.assertIn("--pending", write)
         self.assertIn("steps.pending.outputs.version", index_pr)
+
+    def test_a_missing_branch_is_not_read_as_a_broken_token(self) -> None:
+        # `gh api --jq` answers the same way for a branch that is not there and
+        # a token that cannot read the repository, and the first is "nothing is
+        # pending" while the second has to fail the job. `git ls-remote` says
+        # them apart by itself: nothing on stdout for a branch that does not
+        # exist, a non-zero exit for a repository it cannot read.
+        pending = self.step("index-pr", "git ls-remote")
+        self.assertIn('refs="$(git ls-remote --heads', pending)
+        self.assertIn('[ -z "$refs" ]', pending)
+        self.assertIn("exit 0", pending)
+        self.assertIn("exit 1", pending)
+        self.assertNotIn("gh api", pending)
 
     def test_a_run_that_writes_nothing_opens_nothing(self) -> None:
         # Exit 3 means a newer version is already approved or pending. The job
