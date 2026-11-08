@@ -580,12 +580,24 @@ repository. The calling job is in
 [Writing a dog](../web/src/pages/docs/writing-a-dog.astro). What to know on
 this side:
 
-- **The index row is a human's merge.** The workflow opens a branch
-  `dog-release/<package>-<version>` on this repository and a pull request
-  that changes `source.version`, `source.sha256` and `source.permissions` of
-  that one row, through `scripts/dog-index-update.py`. It hashes the assets
-  the release serves, not what each leg built. A first row for a new dog is a
-  pull request by hand.
+- **The index row is a human's merge.** The workflow pushes one branch per
+  dog, `dog-release/<package>`, and the pull request open on it: a run for a
+  newer version edits that pull request's title and body to this version's
+  instead of opening a second one, since merging an older one after a newer one
+  would set the row back. `index-pr` runs one at a time per dog
+  (`concurrency: dog-index-<package>`, `cancel-in-progress: false`), because
+  both force-push the same branch. Before writing it reads the two things the
+  row could be behind: the row on that branch, handed to
+  `scripts/dog-index-update.py` as `--pending`, and the dog's own release list,
+  as `--released`. A run for a version any of them outranks exits 3, writes
+  nothing, and ends green with the script's reason in the job summary. The
+  release list is what catches a queued run cancelled while a dog released
+  faster than this job drains: the next run for that dog is the only one left
+  that can say the newest release went unwritten. And when a refusal leaves
+  main naming hashes the release no longer serves, the message says so and
+  names the way out, because nothing on the release page shows it. It hashes
+  the assets the release serves, not what each leg built. A first row for a new
+  dog is a pull request by hand.
 - **The permissions come off the built binary.** The
   `x86_64-unknown-linux-gnu` leg runs the staged binary with
   `--shep-manifest` and keeps the answer as `manifest.json`, uploaded as its
