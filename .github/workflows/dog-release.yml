@@ -12,7 +12,9 @@ name: Dog release
 # version: three releases in a day used to open three pull requests at once,
 # and merging an older one after a newer one would set the row back. A run for
 # a newer version edits the open pull request to name it instead of opening a
-# second one, and a run for an older one writes nothing at all.
+# second one, and a run for an older one writes nothing at all. Older than the
+# row, older than the open pull request, or older than a release the dog has
+# published, and the script is told all three.
 #
 # The asset name and the tag are not free: `shep install` builds
 # `<repo>/releases/download/v<version>/<package>-<version>-<target>` from the
@@ -553,6 +555,21 @@ jobs:
             '[.dogs[] | select(.package == $package)][0].source.version // empty' pending.json)"
           [ -n "$version" ] || { echo "::error::${branch} holds no row for ${PACKAGE}"; exit 1; }
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+      # The dog's own release list, which is what tells this run whether it is
+      # the newest release. A run cancelled in this job's concurrency queue is
+      # how a newer release goes unwritten, and the next run for that dog is the
+      # only one left that could notice.
+      - name: List the dog's releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ needs.resolve.outputs.repository }}
+        run: |
+          set -euo pipefail
+          # A draft is not a release yet. The `v` comes off because the script
+          # compares versions, and `shep install` builds its download URL from
+          # the tag.
+          gh api --paginate "repos/${REPOSITORY}/releases" \
+            --jq '.[] | select(.draft == false) | .tag_name | sub("^v"; "")' > released.txt
       - id: write
         name: Write the row
         env:
@@ -567,19 +584,27 @@ jobs:
           # The manifest is the sixth argument, and only when a leg read one.
           if [ -n "$MANIFEST" ]; then args+=("$MANIFEST"); fi
           if [ -n "$PENDING" ]; then args+=(--pending "$PENDING"); fi
+          released="$(cat released.txt)"
+          if [ -n "$released" ]; then args+=(--released "$released"); fi
+          # The script's own reason is what the operator reads, and it names the
+          # version that is ahead and whether main still matches the release.
+          notes=write-notes.txt
           rc=0
-          python3 shep/scripts/dog-index-update.py "${args[@]}" || rc=$?
+          python3 shep/scripts/dog-index-update.py "${args[@]}" 2> "$notes" || rc=$?
           case "$rc" in
             0) echo "wrote=true" >> "$GITHUB_OUTPUT" ;;
-            # Exit 3 is "a newer version is already approved or pending". This
-            # run is the older one and the index is right as it stands, so say
-            # so and end green: nothing is pushed and nothing is opened, and
-            # the pull request holding the newer version stays as it is.
+            # Exit 3 is "a newer version is already released, approved or
+            # pending". This run is not the one the index should move to, so say
+            # so and end green: nothing is pushed and nothing is opened, and the
+            # pull request holding the newer version stays as it is.
             3)
-              echo "A newer version of ${PACKAGE} is already approved or pending, so this run wrote nothing." >> "$GITHUB_STEP_SUMMARY"
+              cat "$notes" >> "$GITHUB_STEP_SUMMARY"
               echo "wrote=skipped" >> "$GITHUB_OUTPUT"
               ;;
-            *) exit "$rc" ;;
+            *)
+              cat "$notes"
+              exit "$rc"
+              ;;
           esac
       - name: Open the pull request
         env:

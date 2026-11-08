@@ -28,17 +28,23 @@ A row is a claim about which version shep will install, so a run for an older
 version than the row already names is refused rather than written: it would set
 the row back to hashes of assets that release no longer serves. The same holds
 for a version a pull request for this dog is still holding, which is what
-`--pending` says. Both exit 3, which says "a newer version is already approved
-or pending" and is not this run's failure.
+`--pending` says, and for a version the dog has released and this run is not,
+which is what `--released` says. A cancelled run in the workflow's concurrency
+queue is how a newer release goes unwritten, and the release list is what tells
+the next run for that dog that it is not the newest one. All three exit 3, which
+says "a newer version is already released, approved or pending" and is not this
+run's failure. When the refusal leaves main naming hashes the release no longer
+serves, the message says so, because that is the part no one can see from the
+release page.
 
 Exits 0 on success, 1 when it refuses, 3 when a newer version is already
-approved or pending; either refusal leaves the index unwritten.
+released, approved or pending; either refusal leaves the index unwritten.
 
 Usage:
 
     python3 scripts/dog-index-update.py web/public/dogs.json \\
         shep-log-rotate 0.2.5 sums.txt shep-pm/shep-log-rotate [manifest.json] \\
-        [--pending 0.3.0]
+        [--pending 0.3.0] [--released "0.2.5 0.3.0"]
 """
 
 from __future__ import annotations
@@ -111,7 +117,8 @@ def compare_prerelease(left: list[str], right: list[str]) -> int:
 
     A version with no prerelease outranks one with. Inside a prerelease,
     identifiers compare pairwise: numbers as numbers, alphanumeric as strings,
-    and a number below an alphanumeric. A longer list outranks its own prefix.
+    and a number below an alphanumeric. A longer list outranks its own prefix,
+    and two lists that match identifier for identifier are equal.
     """
     if not left and not right:
         return 0
@@ -130,7 +137,30 @@ def compare_prerelease(left: list[str], right: list[str]) -> int:
         if numeric_b:
             return 1
         return -1 if a < b else 1
+    if len(left) == len(right):
+        return 0
     return -1 if len(left) < len(right) else 1
+
+
+def outranks(candidate: str, version: str) -> bool:
+    """Whether `candidate` is a version newer than `version`.
+
+    A `candidate` that is not a version answers no: a dog's tag list can hold
+    anything, and only a version can outrank one.
+    """
+    try:
+        return newer(candidate, version)
+    except IndexUpdateError:
+        return False
+
+
+def newest_outranking(candidates: tuple[str, ...], version: str) -> str | None:
+    """The newest of `candidates` that outranks `version`, or `None`."""
+    newest: str | None = None
+    for candidate in candidates:
+        if outranks(candidate, version) and (newest is None or newer(candidate, newest)):
+            newest = candidate
+    return newest
 
 
 def newer(left: str, right: str) -> bool:
@@ -144,6 +174,11 @@ def newer(left: str, right: str) -> bool:
         if x != y:
             return x > y
     return compare_prerelease(a[3], b[3]) > 0
+
+
+def same_version(left: str, right: str) -> bool:
+    """Whether two versions rank equal, build metadata ignored."""
+    return not newer(left, right) and not newer(right, left)
 
 
 def parse_hashes(package: str, version: str, hashes: str) -> dict[str, str]:
@@ -248,6 +283,7 @@ def apply(
     repository: str,
     permissions: list[object] | None = None,
     pending: str | None = None,
+    released: tuple[str, ...] = (),
 ) -> str:
     """The index text with `package`'s cargo row approving `version` and `hashes`.
 
@@ -258,11 +294,13 @@ def apply(
     list the row carried goes out either way: it described the version being
     replaced, and this row is read as a statement about the one it now names.
     `pending` is the version an open index pull request for this dog would
-    merge, or `None` when none is open.
+    merge, or `None` when none is open. `released` is the dog's own tag list.
 
-    Raises `VersionOutOfDateError` when the row, or `pending`, already names a
-    newer version than `version`: writing this row would set the index back to
-    the hashes of a release the dog no longer serves.
+    Raises `VersionOutOfDateError` when the row, `pending`, or a tag on
+    `released` outranks `version`: this run is not the one the index should
+    move to, and writing it would set the index back to the hashes of a release
+    the dog no longer serves. A `released` entry that is not a version is left
+    out, because a dog's tag list can hold anything.
     """
     if not version.strip():
         raise IndexUpdateError("version is empty")
@@ -284,16 +322,23 @@ def apply(
     approved = source.get("version")
     if approved is not None and not isinstance(approved, str):
         raise IndexUpdateError(f"{package!r}'s row carries {approved!r} as its version, not a string")
+    ahead: dict[str, list[str]] = {}
     if approved is not None and newer(approved, version):
-        raise VersionOutOfDateError(
-            f"{package!r} already approves {approved}, which is newer than {version}: "
-            "this row would set the index back to assets that release no longer serves"
-        )
+        ahead.setdefault(approved, []).append("the row already approves it")
     if pending is not None and newer(pending, version):
-        raise VersionOutOfDateError(
-            f"{package!r} has {pending} pending in an open index pull request, which is newer than "
-            f"{version}: this row would set that pull request's row back"
-        )
+        ahead.setdefault(pending, []).append("pending in an open index pull request")
+    newest_released = newest_outranking(released, version)
+    if newest_released is not None:
+        ahead.setdefault(newest_released, []).append(f"released by {repository}")
+    if ahead:
+        named = ", and ".join(f"{v}, {' and '.join(whys)}" for v, whys in ahead.items())
+        message = f"{package!r}: {named}, each newer than {version}. Writing this row would set the index back."
+        if approved is not None and same_version(approved, version) and source.get("sha256") != digests:
+            message += (
+                f" main's {approved} row names hashes this release no longer serves, so installs of "
+                f"{approved} fail verification until a newer row is merged. Re-run {approved} after that."
+            )
+        raise VersionOutOfDateError(message)
     source["version"] = version
     source["sha256"] = digests
     source.pop("permissions", None)
@@ -304,20 +349,30 @@ def apply(
 
 USAGE = (
     "usage: dog-index-update.py <dogs.json> <package> <version> <sha256sum file>"
-    " <owner/name> [manifest.json] [--pending <version>]"
+    " <owner/name> [manifest.json] [--pending <version>] [--released \"<tag> ...\"]"
 )
+
+
+def take_flag(args: list[str], name: str) -> str | None:
+    """The value after `name`, both removed from `args`, or `None` when absent."""
+    if name not in args:
+        return None
+    at = args.index(name)
+    if at + 1 == len(args):
+        raise IndexUpdateError(f"{name} needs a value")
+    value = args.pop(at + 1)
+    args.pop(at)
+    return value
 
 
 def main(argv: list[str]) -> int:
     args = list(argv)
-    pending: str | None = None
-    if "--pending" in args:
-        at = args.index("--pending")
-        if at + 1 == len(args):
-            print(f"{USAGE} (--pending needs a version)", file=sys.stderr)
-            return 1
-        pending = args.pop(at + 1)
-        args.pop(at)
+    try:
+        pending = take_flag(args, "--pending")
+        released = take_flag(args, "--released")
+    except IndexUpdateError as err:
+        print(f"{USAGE} ({err})", file=sys.stderr)
+        return 1
     if len(args) not in (5, 6):
         print(USAGE, file=sys.stderr)
         return 1
@@ -327,7 +382,8 @@ def main(argv: list[str]) -> int:
         index = Path(path).read_text()
         sums = Path(hashes).read_text()
         declared = None if manifest is None else manifest_permissions(read_manifest(manifest))
-        updated = apply(index, package, version, sums, repository, declared, pending)
+        tags = tuple(released.split()) if released is not None else ()
+        updated = apply(index, package, version, sums, repository, declared, pending, tags)
         count = len(parse_hashes(package, version, sums))
     except VersionOutOfDateError as err:
         print(f"dog-index-update: {err}", file=sys.stderr)
