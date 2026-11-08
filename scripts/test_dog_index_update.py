@@ -840,5 +840,70 @@ class WorkflowTests(unittest.TestCase):
         write = self.step("index-pr", "dog-index-update.py")
         self.assertIn("MANIFEST", write)
 
+    # Three releases in one day opened three pull requests at once, and merging
+    # an older one after a newer one set the row back. One branch per dog is
+    # what makes that impossible: there is one pull request to merge.
+    def test_the_index_branch_names_no_version(self) -> None:
+        for name in ("upload", "index-pr"):
+            with self.subTest(job=name):
+                branches = re.findall(r"dog-release/[^\"'\s]*", self.job(name))
+                self.assertTrue(branches, f"{name} names no index branch")
+                self.assertEqual(set(branches), {"dog-release/${PACKAGE}"})
+
+    def test_an_open_index_pull_request_is_edited(self) -> None:
+        # The branch is force-pushed with this version's row, so the pull
+        # request open on it has to say this version too: a reviewer merges
+        # what the title and body describe.
+        opening = self.step("index-pr", "gh pr create")
+        lines = opening.splitlines()
+        at = next(i for i, line in enumerate(lines) if "gh pr edit" in line)
+        guard = next(i for i in range(at - 1, -1, -1) if lines[i].strip().startswith("if "))
+        self.assertIn('if [ -n "$number" ]', lines[guard])
+        self.assertIn('"$number"', lines[at])
+        self.assertIn("--title", lines[at])
+        self.assertIn("--body-file", lines[at])
+        self.assertLess(opening.index("body.md"), opening.index("gh pr edit"))
+
+    def test_the_close_before_upload_matches_this_versions_title(self) -> None:
+        # `upload` replaces this version's assets, so only this version's pull
+        # request is outdated by it. An open one for another version still
+        # matches the release it hashed.
+        close = self.step("upload", "Close the index pull request")
+        self.assertIn('title="chore(web): approve ${PACKAGE} ${VERSION} in the dog index"', close)
+        self.assertIn("--json number,title,isCrossRepository", close)
+        self.assertIn('.title == $title', close)
+
+    def test_two_runs_for_one_dog_never_push_at_once(self) -> None:
+        # Both runs force-push the same branch, so one has to wait for the other
+        # rather than cut it off mid-push.
+        index_pr = self.job("index-pr")
+        self.assertIn("concurrency:", index_pr)
+        self.assertIn("group: dog-index-${{ inputs.package }}", index_pr)
+        self.assertIn("cancel-in-progress: false", index_pr)
+
+    def test_the_pending_row_is_read_before_the_row_is_written(self) -> None:
+        # The branch holds the row an open pull request would merge. Without
+        # it, a run for an older version cannot know it is the older one.
+        index_pr = self.job("index-pr")
+        self.assertLess(
+            index_pr.index("contents/web/public/dogs.json"),
+            index_pr.index("dog-index-update.py"),
+        )
+        write = self.step("index-pr", "dog-index-update.py")
+        self.assertIn("--pending", write)
+        self.assertIn("steps.pending.outputs.version", index_pr)
+
+    def test_a_run_that_writes_nothing_opens_nothing(self) -> None:
+        # Exit 3 means a newer version is already approved or pending. The job
+        # ends green, pushes nothing and opens nothing, and the open pull
+        # request for the newer version stays open as it is.
+        write = self.step("index-pr", "dog-index-update.py")
+        self.assertIn("|| rc=$?", write)
+        self.assertIn('exit "$rc"', write)
+        self.assertIn("3)", write)
+        opening = self.step("index-pr", "gh pr create")
+        self.assertIn("if: steps.write.outputs.wrote == 'true'", opening)
+
+
 if __name__ == "__main__":
     unittest.main()

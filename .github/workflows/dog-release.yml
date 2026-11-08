@@ -8,13 +8,19 @@ name: Dog release
 # merging that pull request is the review the index stands for; nothing here
 # approves a version by itself.
 #
+# The index branch is one per dog, `dog-release/<package>`, not one per
+# version: three releases in a day used to open three pull requests at once,
+# and merging an older one after a newer one would set the row back. A run for
+# a newer version edits the open pull request to name it instead of opening a
+# second one, and a run for an older one writes nothing at all.
+#
 # The asset name and the tag are not free: `shep install` builds
 # `<repo>/releases/download/v<version>/<package>-<version>-<target>` from the
 # index row, so the tag has to be `v<version>`. See the "Releasing a dog"
 # section of web/src/pages/docs/writing-a-dog.astro for the calling job.
 # The calling job grants `contents: write` and `actions: read` and pins this
-# workflow by commit. Before replacing a release's assets it closes any open
-# index pull request for the same version, so a run that fails part-way never
+# workflow by commit. Before replacing a release's assets it closes the open
+# index pull request for that same version, so a run that fails part-way never
 # leaves one holding hashes the release no longer serves.
 #
 # A dog that cannot build for a target names it in `skip-targets`. Its row then
@@ -385,9 +391,13 @@ jobs:
       # about to be replaced. If this run then fails part-way, that pull
       # request would still be open, merge-ready and wrong: the release would
       # serve new binaries under old hashes. Closing it first means a failed
-      # run leaves none, and `index-pr` opens a fresh one on success. A run
-      # that fails before this point replaced nothing, so its pull request
+      # run leaves none, and `index-pr` writes the branch again on success. A
+      # run that fails before this point replaced nothing, so its pull request
       # stays valid.
+      #
+      # Only this version's pull request: the branch is one per dog, so an open
+      # one may hold another version's row, and the assets that row hashed are
+      # not the ones being replaced here.
       - name: Close the index pull request these assets would outdate
         env:
           GH_TOKEN: ${{ secrets.index-token }}
@@ -395,15 +405,19 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
-          branch="dog-release/${PACKAGE}-${VERSION}"
+          branch="dog-release/${PACKAGE}"
+          title="chore(web): approve ${PACKAGE} ${VERSION} in the dog index"
           # `isCrossRepository` false: `--head` matches a branch name alone,
           # so a fork's pull request from a same-named branch would count.
+          # Through `jq` rather than `--jq`: the title is a shell variable, and
+          # `gh pr list` has no way to hand one to its filter.
           number="$(gh pr list --repo shep-pm/shep --head "$branch" --state open \
-            --json number,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
+            --json number,title,isCrossRepository \
+            | jq -r --arg title "$title" \
+              '[.[] | select(.isCrossRepository == false and .title == $title)][0].number // empty')"
           if [ -n "$number" ]; then
             gh pr close "$number" --repo shep-pm/shep --delete-branch \
-              --comment "A new run of ${PACKAGE} ${VERSION} is replacing the release assets this pull request hashed. It opens a fresh pull request when the upload completes."
+              --comment "A new run of ${PACKAGE} ${VERSION} is replacing the release assets this pull request hashed. The index branch is written again when the upload completes."
           fi
       - id: attach
         env:
@@ -428,6 +442,12 @@ jobs:
     name: Open the index pull request
     needs: [resolve, upload]
     if: needs.resolve.outputs.dry-run != 'true'
+    # The branch is one per dog and every run force-pushes it, so two runs for
+    # one dog must not be pushing at the same time. `cancel-in-progress: false`
+    # so a run is never cut off between the push and the pull request it opens.
+    concurrency:
+      group: dog-index-${{ inputs.package }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # `actions: read` for the manifest artifact the Linux leg handed over. This
     # job runs nothing the dog built: it reads the file the leg kept.
@@ -497,19 +517,66 @@ jobs:
             exit 1
           fi
           echo "manifest=manifests/${artifact}/manifest.json" >> "$GITHUB_OUTPUT"
-      - name: Write the row
+      # The branch is this dog's own, and holds the row an open pull request
+      # would merge. Reading it is what tells "this is the newest release" from
+      # "a newer one is approved, or pending", which the script refuses.
+      - id: pending
+        name: Read the row an open pull request would merge
+        env:
+          GH_TOKEN: ${{ secrets.index-token }}
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          branch="dog-release/${PACKAGE}"
+          # A branch that does not exist answers 404, and so does a token that
+          # cannot see this repository. Only the first reads as "nothing is
+          # pending": reading the second that way would write a row over a
+          # newer one this run cannot see.
+          if ! content="$(gh api "repos/shep-pm/shep/contents/web/public/dogs.json" \
+            --field ref="$branch" --jq .content 2>&1)"; then
+            case "$content" in
+              *"Not Found"*)
+                echo "No ${branch} branch, so nothing is pending for ${PACKAGE}."
+                exit 0
+                ;;
+              *)
+                echo "::error::could not read the row on ${branch}: ${content}"
+                exit 1
+                ;;
+            esac
+          fi
+          printf '%s' "$content" | tr -d '\n' | base64 -d > pending.json
+          version="$(jq -r --arg package "$PACKAGE" \
+            '[.dogs[] | select(.package == $package)][0].source.version // empty' pending.json)"
+          [ -n "$version" ] || { echo "::error::${branch} holds no row for ${PACKAGE}"; exit 1; }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - id: write
+        name: Write the row
         env:
           PACKAGE: ${{ inputs.package }}
           REPOSITORY: ${{ needs.resolve.outputs.repository }}
           VERSION: ${{ needs.resolve.outputs.version }}
           MANIFEST: ${{ steps.manifest.outputs.manifest }}
+          PENDING: ${{ steps.pending.outputs.version }}
         run: |
           set -euo pipefail
           args=(shep/web/public/dogs.json "$PACKAGE" "$VERSION" sums.txt "$REPOSITORY")
           # The manifest is the sixth argument, and only when a leg read one.
           if [ -n "$MANIFEST" ]; then args+=("$MANIFEST"); fi
-          python3 shep/scripts/dog-index-update.py "${args[@]}"
+          if [ -n "$PENDING" ]; then args+=(--pending "$PENDING"); fi
+          rc=0
+          python3 shep/scripts/dog-index-update.py "${args[@]}" || rc=$?
+          case "$rc" in
+            0) echo "wrote=true" >> "$GITHUB_OUTPUT" ;;
+            # Exit 3 is "a newer version is already approved or pending". This
+            # run is the older one and the index is right as it stands, so say
+            # so and end green: nothing is pushed and nothing is opened, and
+            # the pull request holding the newer version stays as it is.
+            3) echo "A newer version of ${PACKAGE} is already approved or pending, so this run wrote nothing." >> "$GITHUB_STEP_SUMMARY" ;;
+            *) exit "$rc" ;;
+          esac
       - name: Open the pull request
+        if: steps.write.outputs.wrote == 'true'
         env:
           GH_TOKEN: ${{ secrets.index-token }}
           PACKAGE: ${{ inputs.package }}
@@ -520,7 +587,8 @@ jobs:
         run: |
           set -euo pipefail
           cd shep
-          branch="dog-release/${PACKAGE}-${VERSION}"
+          branch="dog-release/${PACKAGE}"
+          title="chore(web): approve ${PACKAGE} ${VERSION} in the dog index"
           # Only a pull request from a branch of this repository: `--head`
           # alone also matches a fork's same-named branch.
           open_pr() {
@@ -539,21 +607,6 @@ jobs:
             fi
             exit 0
           fi
-          title="chore(web): approve ${PACKAGE} ${VERSION} in the dog index"
-          git checkout -b "$branch"
-          git add web/public/dogs.json
-          git -c user.name='shep dog release' \
-              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-              commit -m "$title"
-          git remote set-url origin "https://x-access-token:${INDEX_TOKEN}@github.com/shep-pm/shep.git"
-          # Forced: the branch is this workflow's own, and a re-run should
-          # replace its hashes rather than stop on the old ones.
-          git push --force origin "HEAD:refs/heads/${branch}"
-
-          if [ -n "$(open_pr)" ]; then
-            echo "A pull request for ${branch} is open already. Its branch now carries these hashes."
-            exit 0
-          fi
           {
             echo "Approves \`${PACKAGE}\` ${VERSION} and its prebuilt binaries in the dog index."
             echo
@@ -568,5 +621,25 @@ jobs:
             echo
             echo "Merging this is the review: \`shep install ${PACKAGE}\` will install this version and no other."
           } > body.md
+          git checkout -b "$branch"
+          git add web/public/dogs.json
+          git -c user.name='shep dog release' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "$title"
+          git remote set-url origin "https://x-access-token:${INDEX_TOKEN}@github.com/shep-pm/shep.git"
+          # Forced: the branch is this workflow's own, and a re-run should
+          # replace its hashes rather than stop on the old ones.
+          git push --force origin "HEAD:refs/heads/${branch}"
+
+          number="$(open_pr)"
+          if [ -n "$number" ]; then
+            # One branch per dog, so this pull request is the dog's, and the
+            # branch under it now carries this version's row. Set its title and
+            # body to this version's as well: a reviewer merges what the pull
+            # request says it merges, and leaving them naming an older version
+            # would merge that one's row under this version's name.
+            gh pr edit "$number" --repo shep-pm/shep --title "$title" --body-file body.md
+            exit 0
+          fi
           gh pr create --repo shep-pm/shep --base main --head "$branch" \
             --title "$title" --body-file body.md
