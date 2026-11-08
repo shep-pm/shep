@@ -578,12 +578,17 @@ repository. The calling job is in
 [Writing a dog](../web/src/pages/docs/writing-a-dog.astro). What to know on
 this side:
 
-- **The index row is a human's merge.** The workflow opens a branch
-  `dog-release/<package>-<version>` on this repository and a pull request
-  that changes `source.version`, `source.sha256` and `source.permissions` of
-  that one row, through `scripts/dog-index-update.py`. It hashes the assets
-  the release serves, not what each leg built. A first row for a new dog is a
-  pull request by hand.
+- **The index row is a human's merge.** The workflow pushes one branch per
+  dog, `dog-release/<package>`, and the pull request open on it: a run for a
+  newer version edits that pull request's title and body to this version's
+  instead of opening a second one, since merging an older one after a newer one
+  would set the row back. `index-pr` runs one at a time per dog
+  (`concurrency: dog-index-<package>`, `cancel-in-progress: false`), because
+  both force-push the same branch. Before writing, it reads the row that branch
+  holds and hands it to `scripts/dog-index-update.py` as `--pending`: a run for
+  a version older than the row, or than the pending one, exits 3, writes
+  nothing, and ends green. It hashes the assets the release serves, not what
+  each leg built. A first row for a new dog is a pull request by hand.
 - **The permissions come off the built binary.** The
   `x86_64-unknown-linux-gnu` leg runs the staged binary with
   `--shep-manifest` and keeps the answer as `manifest.json`, uploaded as its
