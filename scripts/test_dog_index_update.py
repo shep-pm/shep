@@ -913,9 +913,27 @@ class WorkflowTests(unittest.TestCase):
         write = self.step("index-pr", "dog-index-update.py")
         self.assertIn("|| rc=$?", write)
         self.assertIn('exit "$rc"', write)
-        self.assertIn("3)", write)
+        self.assertIn("wrote=skipped", write)
         opening = self.step("index-pr", "gh pr create")
-        self.assertIn("if: steps.write.outputs.wrote == 'true'", opening)
+        self.assertIn('case "$WROTE" in', opening)
+        self.assertIn("skipped)", opening)
+        self.assertLess(opening.index('case "$WROTE" in'), opening.index("git push"))
+
+    def test_a_write_step_that_said_nothing_fails_the_job(self) -> None:
+        # A gate that reads `wrote == 'true'` skips the pull request step in
+        # silence whenever the write step never reached the line that sets it,
+        # which is a release out with no index pull request and a green job.
+        # The answer is read as three cases instead: written, deliberately
+        # skipped, and anything else is an error.
+        opening = self.step("index-pr", "gh pr create")
+        self.assertIn("WROTE: ${{ steps.write.outputs.wrote }}", opening)
+        self.assertNotIn("if: steps.write", opening)
+        at = opening.index('case "$WROTE" in')
+        guard = opening[at : opening.index("git push")]
+        self.assertIn("true)", guard)
+        self.assertIn("skipped)", guard)
+        self.assertIn("::error::", guard)
+        self.assertEqual(guard.count("exit 1"), 1)
 
 
 if __name__ == "__main__":

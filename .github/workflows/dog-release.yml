@@ -575,11 +575,13 @@ jobs:
             # run is the older one and the index is right as it stands, so say
             # so and end green: nothing is pushed and nothing is opened, and
             # the pull request holding the newer version stays as it is.
-            3) echo "A newer version of ${PACKAGE} is already approved or pending, so this run wrote nothing." >> "$GITHUB_STEP_SUMMARY" ;;
+            3)
+              echo "A newer version of ${PACKAGE} is already approved or pending, so this run wrote nothing." >> "$GITHUB_STEP_SUMMARY"
+              echo "wrote=skipped" >> "$GITHUB_OUTPUT"
+              ;;
             *) exit "$rc" ;;
           esac
       - name: Open the pull request
-        if: steps.write.outputs.wrote == 'true'
         env:
           GH_TOKEN: ${{ secrets.index-token }}
           PACKAGE: ${{ inputs.package }}
@@ -587,8 +589,24 @@ jobs:
           REPOSITORY: ${{ needs.resolve.outputs.repository }}
           TAG: ${{ inputs.tag }}
           MANIFEST: ${{ steps.manifest.outputs.manifest }}
+          WROTE: ${{ steps.write.outputs.wrote }}
         run: |
           set -euo pipefail
+          # The write step's answer, read as three cases. An `if:` on this step
+          # would skip it in silence whenever the write step never reached the
+          # line that sets its output, which is a release out with no index
+          # pull request and a job that passed.
+          case "$WROTE" in
+            true) ;;
+            skipped)
+              echo "The row was not written, so nothing is pushed and nothing is opened."
+              exit 0
+              ;;
+            *)
+              echo "::error::the write step set no wrote output, so this run neither wrote the row nor said why it did not."
+              exit 1
+              ;;
+          esac
           cd shep
           branch="dog-release/${PACKAGE}"
           title="chore(web): approve ${PACKAGE} ${VERSION} in the dog index"
