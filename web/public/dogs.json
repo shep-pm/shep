@@ -142,15 +142,15 @@
       "category": "other",
       "source": {
         "kind": "cargo",
-        "version": "0.1.1",
+        "version": "0.1.2",
         "sha256": {
-          "aarch64-apple-darwin": "b17bfc2153e75287d79888d51dc422d7b657ae912e4187772cbbb9e838a28f29",
-          "aarch64-unknown-linux-gnu": "0fac25ee390c14373c957e2580969801a710a512b15515c0ae38f8201c2be2ff",
-          "aarch64-unknown-linux-musl": "810d88ff6ec589ebd4e68d32db3e679655d2429fa6e7074a1d4a7a28b5f66cad",
-          "x86_64-apple-darwin": "13d8721efcc9a7f9c18f3dd96ab773eb68ff7cf609abe352e4356e79842e00a4",
-          "x86_64-pc-windows-msvc": "9df0201314d347ecc95fbe40a0f5ada96c63f72e7e62bff798b6e624c141713a",
-          "x86_64-unknown-linux-gnu": "86cd369fcfc935195b4d6df6717e5c5314adbe4755cbd73c65654a626524969e",
-          "x86_64-unknown-linux-musl": "bd8cb7b18082dcb6eb0f9d8e784cd5fb6286213d7038da234bbf435364c295bd"
+          "aarch64-apple-darwin": "b657e1a4e5909f348ecc7587a65f358985e2a3dabd289b3d44e5886856e4b996",
+          "aarch64-unknown-linux-gnu": "cd73b098aff009cc5701ec907ab6ea05faad0417d551802f4511a5062356e480",
+          "aarch64-unknown-linux-musl": "f3944dae210028736396013bb6db0fb5b4ec407e99b5bb4e16f67c764055b0d2",
+          "x86_64-apple-darwin": "eeb1a1a228e41d297c300b23669278874c3accd60c03a648ff4405cb86e53c3f",
+          "x86_64-pc-windows-msvc": "c072a18912ba05a92d9775a294a56164ec3f7c7427c7811d17b0c08c9bba0346",
+          "x86_64-unknown-linux-gnu": "b709e635c19d20c02f006b61a09f62e59ebd0ecd0d1fce46bf99ac9a39ec40f9",
+          "x86_64-unknown-linux-musl": "8c1d1ac07dc72e4a6d00e3f7c5c6e430f8ad789f1ffde9670250906ff49f0ced"
         },
         "permissions": [
           {
