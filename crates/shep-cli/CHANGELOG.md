@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-11-09
+
+### Added
+
+- Show package beside name at wide widths
+- Show the package in each entry
+- Distinguish adopted dogs without receipts
+- Offer installs for adopted dogs without receipts
+- Confirm replacement of an adopted path before building
+
+### Fixed
+
+- Preserve an adopted dogs enabled state on replacement
+- Park the adopted binary until replacement commits
+- Track the new receipt on swap rollback and say when a swap is declined
+- Raise rmcp to 3.9.0 for RUSTSEC-2026-0462
+- Park the adopted file only at the install target, honour --no-enable, fail a declined swap
+
+
 ## [0.25.1] - 2026-11-09
 
 
