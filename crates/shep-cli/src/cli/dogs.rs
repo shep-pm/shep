@@ -140,9 +140,10 @@ pub struct InstallArgs {
     /// --available` lists, with the install line under each dog that can be
     /// installed.
     pub dog: Option<String>,
-    /// Grant the dog everything it declares without asking. With no
-    /// terminal and no `--yes`, install fetches the dog and then refuses at
-    /// the grant question.
+    /// Grant the dog everything it declares without asking, and replace an
+    /// adopted dog without asking. With no terminal and no `--yes`, install
+    /// refuses before it replaces an adopted dog, and fetches the dog and then
+    /// refuses at the grant question otherwise.
     #[arg(short = 'y', long)]
     pub yes: bool,
     /// Stop after adopting: the dog is installed, recorded and granted, and left

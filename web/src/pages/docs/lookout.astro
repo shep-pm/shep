@@ -699,10 +699,13 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
     </p>
     <p>
       The list is one row per dog the index lists, under a
-      <code>CATALOGUE</code> band: NAME, CATEGORY, VERSION and STATE, where
-      STATE is <code>not installed</code>, <code>installed</code> or{" "}
-      <code>enabled</code>. <code>Enter</code> opens the dog under the cursor as
-      an entry: description, repo, license, kind, state, and the permissions the
+      <code>CATALOGUE</code> band: NAME, PACKAGE (the crate name), CATEGORY,
+      VERSION and STATE, where STATE is <code>not installed</code>,{" "}
+      <code>adopted</code> (a path with no install receipt),{" "}
+      <code>installed</code> or <code>enabled</code>. A narrow terminal drops
+      PACKAGE first, then CATEGORY. <code>Enter</code> opens the dog under the
+      cursor as an entry: description, package, repo, license, kind, state, and
+      the permissions the
       index lists for that approved version, each marked <code>required</code>{" "}
       or <code>optional</code>. A row whose kind shep cannot build shows the{" "}
       <code>build</code> and <code>adopt</code> instructions{" "}
@@ -976,9 +979,17 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
       <code>i</code> opens the dog catalogue from any screen,{" "}
       <code>Enter</code> opens the row under the cursor, and <code>Enter</code>{" "}
       again installs it through the same code <code>shep install</code> runs.
-      Only an entry shep can build and this machine has not installed gets
-      that: the bar names <code>enter install</code> while the entry is open,
-      and an entry with instructions only has no install action.
+      Only an entry shep can build and this machine has not installed, or has
+      only adopted from a path, gets that: the bar names{" "}
+      <code>enter install</code> while the entry is open, and an entry with
+      instructions only has no install action.
+    </p>
+    <p>
+      On an <code>adopted</code> entry the install is a swap. A modal first
+      names the adopted path it replaces, and a no changes nothing. A yes
+      builds the catalogue version under the same name, keeps the{" "}
+      <code>[dog.&lt;name&gt;]</code> table and the enabled state, and leaves
+      the old file on disk.
     </p>
     <p>
       The grant question the CLI prints opens as a modal with the same text,{" "}
