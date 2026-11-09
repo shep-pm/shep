@@ -219,6 +219,11 @@ pub(super) async fn install_dog(
     dog: &AvailableDog,
     catalog: &Catalog<'_>,
 ) -> ExitCode {
+    match super::install_swap::confirm(streams, paths, args, input, dog) {
+        Ok(true) => {}
+        Ok(false) => return ExitCode::Success,
+        Err(code) => return code,
+    }
     let mut fetched = Vec::new();
     if let Err(code) = gather(streams, paths, args, reach, catalog, dog, &mut fetched).await {
         return code;
