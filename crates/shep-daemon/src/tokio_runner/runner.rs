@@ -462,7 +462,7 @@ impl ProcessRunner for TokioRunner {
         // whispers itself, so a pipe's pump gets the queue only without one.
         let (stdout, pty_handle, to_stdin_rx) = match pty_master {
             Some(master) => {
-                let (stdout, handle) = pty::wire(master, to_stdin_rx);
+                let (stdout, handle) = pty::wire(master, to_stdin_rx, pid);
                 (Some(stdout), Some(handle), None)
             }
             None => (out_pipe.map(Stdout::Carried), None, Some(to_stdin_rx)),
@@ -903,7 +903,7 @@ impl ProcessRunner for TokioRunner {
         #[cfg(unix)]
         let (stdout, pty, to_stdin_rx) = match pty_master {
             Some(master) => {
-                let (stdout, handle) = pty::wire(master, to_stdin_rx);
+                let (stdout, handle) = pty::wire(master, to_stdin_rx, pid);
                 (Some(stdout), Some(handle), None)
             }
             None => (
