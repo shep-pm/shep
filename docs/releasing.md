@@ -271,9 +271,12 @@ shep-pm/shep-paddock#107). Each sat red until someone closed it by hand.
 `release-plz-pr.yml` answers it in two places.
 
 - Its first step reads main's tip with `gh api` and skips the rest of the job
-  when that tip is no longer `github.sha`, logging both shas. Skipping costs
-  nothing: every push that landed after this checkout queued its own run in the
-  `release-plz-pr` group, and a release merge needs none.
+  when that tip is no longer `github.sha`, logging both shas. It names main
+  rather than the ref the run came from, so a `workflow_dispatch` from a tag or
+  a branch skips too: that ref's tip would read as current for a checkout main
+  has moved past. Skipping costs nothing: every push that landed after this
+  checkout queued its own run in the `release-plz-pr` group, and a release
+  merge needs none.
 - The guard's "changes no version" branch closes the pull request when main's
   tip is not `github.sha` and main's `Cargo.toml` at that tip names the version
   the pull request's head names. It comments the version that already shipped,

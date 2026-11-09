@@ -54,39 +54,42 @@ jobs:
       # tree at the version that just shipped. It happened on #1607, and on
       # three dogs on 2026-11-09 (shep-pm/shep-discord#36,
       # shep-pm/shep-deploy#187, shep-pm/shep-paddock#107), each left red
-      # until someone closed it by hand. Reading the branch's tip before
+      # until someone closed it by hand. Reading main's tip before
       # anything else is spent tells a stale run from a current one, and
       # skipping a stale one costs nothing: every push that landed after this
       # checkout queued its own run in the `release-plz-pr` group, and a
       # release merge needs none.
-      - name: Skip a run the branch moved past
+      - name: Skip a run main moved past
         id: fresh
         env:
           # Read-only, and the job's own `contents: write` covers it. Not
           # RELEASE_PLZ_TOKEN: this asks one question of the API and should
           # not spend the token the write steps need.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The branch this run is for. A push names it; a workflow_dispatch
-          # names the ref it was dispatched from.
-          BRANCH: ${{ github.ref_name }}
+          # main, named, not `github.ref_name`. A workflow_dispatch from a
+          # tag or a branch names that ref, and its tip would read as
+          # current for a checkout that main has moved past. The release
+          # pull request is cut against main, so main's tip is the thing
+          # to compare against.
+          MAIN: main
           RUN_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           # Fails closed. A run that cannot read the tip cannot tell whether
           # it is stale, and opening a release pull request on that guess is
           # the shape this step exists to stop.
-          tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${BRANCH}" --jq .sha)" || {
-            echo "::error::could not read ${BRANCH}'s tip, so this run cannot tell whether its checkout is current."
+          tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${MAIN}" --jq .sha)" || {
+            echo "::error::could not read main's tip, so this run cannot tell whether its checkout is current."
             exit 1
           }
           if [ "$tip" = "$RUN_SHA" ]; then
             echo "fresh=true" >> "$GITHUB_OUTPUT"
-            echo "${BRANCH}'s tip is ${RUN_SHA}: this checkout is current."
+            echo "main's tip is ${RUN_SHA}: this checkout is current."
             exit 0
           fi
           echo "fresh=false" >> "$GITHUB_OUTPUT"
-          echo "${BRANCH}'s tip is ${tip} and this run's checkout is ${RUN_SHA}, so ${BRANCH} moved while this run queued."
-          echo "Skipping release-plz. The push that moved ${BRANCH} queued its own run in the release-plz-pr group."
+          echo "main's tip is ${tip} and this run's checkout is ${RUN_SHA}, so main moved while this run queued."
+          echo "Skipping release-plz. The push that moved main queued its own run in the release-plz-pr group."
       # Every action here is pinned by commit, not by tag: this job holds
       # RELEASE_PLZ_TOKEN and CARGO_REGISTRY_TOKEN, a bigger risk for a
       # mutable tag than in a job that only runs tests.
@@ -144,9 +147,11 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           PR_NUMBER: ${{ fromJSON(steps.release-plz.outputs.pr).number }}
-          # The close branch below asks whether the branch moved past this
-          # run's checkout, so the guard needs the sha that checkout is at.
-          BRANCH: ${{ github.ref_name }}
+          # The close branch below asks whether main moved past this run's
+          # checkout, so the guard needs main's tip and the sha that
+          # checkout is at. Same reason as above: name main, not the ref
+          # this run was dispatched from.
+          MAIN: main
           RUN_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -173,21 +178,21 @@ jobs:
           fi
           if [ "$base_version" = "$head_version" ]; then
             # The other shape of "changes no version", and it closes itself.
-            # A run whose checkout the branch has since moved past opened this
-            # pull request from a tree that predates a release which has since
+            # A run whose checkout main has since moved past opened this pull
+            # request from a tree that predates a release which has since
             # shipped, and picked the version that release shipped: base and
-            # head agree because the branch already carries it. Read the tip
-            # again rather than trust the step above, since the branch can have
-            # moved during this run, and this is the last moment the pull
-            # request can be judged.
-            tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${BRANCH}" --jq .sha)" || tip=""
+            # head agree because main already carries it. Read the tip again
+            # rather than trust the step above, since main can have moved
+            # during this run, and this is the last moment the pull request can
+            # be judged.
+            tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${MAIN}" --jq .sha)" || tip=""
             tip_version=""
             if [ -n "$tip" ] && [ "$tip" != "$RUN_SHA" ]; then
               tip_version="$(manifest_version "$tip")" || tip_version=""
             fi
             if [ -n "$tip_version" ] && [ "$tip_version" = "$head_version" ]; then
               shipped="$(printf '%s' "${head_version#version=}" | tr -d '"')"
-              note="Closed by the release guard: ${BRANCH} at ${tip} already carries ${shipped} in Cargo.toml, so this pull request bumps nothing. It came from a run that checked out ${RUN_SHA}, before the release that shipped ${shipped} landed. The next push to ${BRANCH} opens a release pull request from a current checkout."
+              note="Closed by the release guard: main at ${tip} already carries ${shipped} in Cargo.toml, so this pull request bumps nothing. It came from a run that checked out ${RUN_SHA}, before the release that shipped ${shipped} landed. The next push to main opens a release pull request from a current checkout."
               # Deleting the branch is the half that matters: release-plz
               # reuses a branch it finds, so a stale one left behind is the
               # next duplicate. A branch GitHub already deleted is no reason to
@@ -199,7 +204,7 @@ jobs:
                 }
               fi
               echo "closed=true" >> "$GITHUB_OUTPUT"
-              echo "Closed release PR #$PR_NUMBER: ${BRANCH} already carries ${shipped}."
+              echo "Closed release PR #$PR_NUMBER: main already carries ${shipped}."
               exit 0
             fi
             echo "::error::release PR #$PR_NUMBER changes no version in Cargo.toml."
@@ -208,11 +213,11 @@ jobs:
             echo "::error::the changelog entry is wanted, close it if this is a loop."
             # Why it is not a stale duplicate, in the words a human reads.
             if [ -z "$tip" ]; then
-              echo "::error::could not read ${BRANCH}'s tip, so this cannot be judged as a duplicate of a release that already shipped."
+              echo "::error::could not read main's tip, so this cannot be judged as a duplicate of a release that already shipped."
             elif [ "$tip" = "$RUN_SHA" ]; then
-              echo "::error::${BRANCH}'s tip is ${tip} and this run checked out ${RUN_SHA}, so the branch has not moved past this run."
+              echo "::error::main's tip is ${tip} and this run checked out ${RUN_SHA}, so main has not moved past this run."
             else
-              echo "::error::${BRANCH}'s tip ${tip} carries ${tip_version:-unread} and this pull request proposes ${head_version}, so it is not the version that already shipped."
+              echo "::error::main's tip ${tip} carries ${tip_version:-unread} and this pull request proposes ${head_version}, so it is not the version that already shipped."
             fi
             exit 1
           fi
