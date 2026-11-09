@@ -800,6 +800,80 @@ async fn dependencies_are_asked_in_the_clis_order_and_a_no_stops_the_next_questi
     );
 }
 
+/// Enter on an adopted entry asks the swap question in a grant modal that
+/// names the adopted path, and a no builds nothing and changes nothing.
+#[cfg(all(test, unix))]
+#[tokio::test]
+async fn a_swap_asks_a_modal_naming_the_adopted_path_and_a_no_changes_nothing() {
+    use crate::commands::shep_toml::ShepToml;
+
+    let world = World::new();
+    let adopted = world._dir.path().join("adopted-otel");
+    std::fs::write(&adopted, "old binary").expect("an adopted file");
+    ShepToml::try_edit(&world.paths.daemon_config, |cfg| {
+        cfg.adopt_dog("otel", &adopted, false)
+    })
+    .expect("an adopted dog");
+    let before = std::fs::read(&world.paths.daemon_config).expect("the config");
+    let (mut app, _) = installing();
+    let mut run = DogRunner::Stub(world.cargo.clone()).start(
+        &world.paths,
+        Job::Install {
+            adopt_as: "otel".to_owned(),
+        },
+    );
+    app.note_modal_reach(Some(0));
+
+    let mut asked: Vec<String> = Vec::new();
+    let mut ended: Option<(bool, String)> = None;
+    while ended.is_none() {
+        let msg = tokio::time::timeout(SESSION_WAIT, run.msgs.recv())
+            .await
+            .expect("the job reported within the bound")
+            .expect("the job's channel stays open until the run ends");
+        if let Msg::DogJobDone { ok, output, .. } = &msg {
+            ended = Some((*ok, output.clone()));
+        }
+        app.update(msg);
+        while let Some(tag) = grant_tag(&app) {
+            asked.push(grant_question(&app));
+            app.note_modal_reach(Some(0));
+            assert_eq!(
+                app.update(Msg::Key(KeyPress::Escape)),
+                Effect::ModalAnswered { tag, yes: false }
+            );
+            app.answer_grant(tag, false);
+        }
+    }
+
+    let (ok, output) = ended.expect("the job ended");
+    assert_eq!(
+        asked,
+        [format!(
+            "Replace adopted otel at {} with the catalogue build?",
+            adopted.display()
+        )],
+        "the one question names the path"
+    );
+    assert!(
+        !ok,
+        "a declined swap is not an install that landed: {output}"
+    );
+    assert!(output.contains("nothing was changed"), "{output}");
+    assert_eq!(
+        std::fs::read(&world.paths.daemon_config).expect("the config"),
+        before
+    );
+    assert_eq!(
+        std::fs::read_to_string(&adopted).expect("the adopted file"),
+        "old binary"
+    );
+    assert!(
+        !world.paths.dogs_dir.join("otel").exists(),
+        "nothing was built"
+    );
+}
+
 /// How long the stub cargo may take to record its pid, and how long a build
 /// the run ended may take to show itself as stopped.
 #[cfg(all(test, unix))]
