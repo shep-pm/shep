@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Distinguish adopted dogs without receipts
 - Offer installs for adopted dogs without receipts
 - Confirm replacement of an adopted path before building
+- Show the package and swap an adopted dog for the catalogue build
 
 ### Fixed
 
