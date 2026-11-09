@@ -33,7 +33,10 @@ const LINE_BREAKING_FINALS: &[u8] = b"ABCDEFGHJKXadef`";
 /// the operator's terminal. Past this the oldest rows go.
 const SCREEN_ROWS: usize = 256;
 
-/// Bytes one kept row may hold. [`SCRATCH`] is what one read carries.
+/// Bytes a row may hold before the filter stops being able to keep it.
+///
+/// [`SCRATCH`] is what one read carries, so a row that reaches this goes out
+/// a read at a time instead of as a whole allocation.
 const SCREEN_ROW_BYTES: usize = SCRATCH;
 
 /// Where the filter is inside an escape sequence.
@@ -70,10 +73,15 @@ pub(super) struct AnsiLines<R> {
     cr_pending: bool,
     /// The line being written has a visible byte.
     line_has_text: bool,
-    /// Bytes of the row being written, until it ends.
+    /// Bytes of the row being written that are not out yet. Never past
+    /// [`SCREEN_ROW_BYTES`].
     row: Vec<u8>,
+    /// The row being written passed [`SCREEN_ROW_BYTES`], so part of it went
+    /// out as it was read. It holds a slot as nothing to compare against.
+    spilling: bool,
     /// Rows written so far, oldest first, capped at [`SCREEN_ROWS`]. `None`
-    /// is one too long to keep, so a repaint against it is written.
+    /// is one that went out as it was read, so a repaint against it is
+    /// written.
     screen: VecDeque<Option<Vec<u8>>>,
     /// Rows ahead that replace the tail of [`Self::screen`], from a cursor-up.
     /// Never past it unless [`Self::blind`] holds.
@@ -102,6 +110,7 @@ impl<R> AnsiLines<R> {
             cr_pending: false,
             line_has_text: false,
             row: Vec::new(),
+            spilling: false,
             screen: VecDeque::new(),
             replacing: 0,
             blind: false,
@@ -115,17 +124,23 @@ impl<R> AnsiLines<R> {
     }
 
     /// Ends the line being written if it has text. A line with none is
-    /// already ended.
+    /// already ended, and what was drawn on it is whitespace a cursor move
+    /// left behind or a `\r` moved back over: the next row starts where the
+    /// cursor now is.
     fn break_line(&mut self, text: &mut Vec<u8>) {
         if self.line_has_text {
-            self.end_row(text);
+            self.end_row(text, true);
+        } else {
+            self.row.clear();
         }
     }
 
     /// Ends the row being written. A row that repeats the one it replaces is
-    /// dropped. Every other row is written and kept.
-    fn end_row(&mut self, text: &mut Vec<u8>) {
+    /// dropped. Every other row is written and kept. `line_end` is false for
+    /// a stream that stops mid-row, which owes that row no newline.
+    fn end_row(&mut self, text: &mut Vec<u8>, line_end: bool) {
         let row = core::mem::take(&mut self.row);
+        let spilled = core::mem::replace(&mut self.spilling, false);
         self.line_has_text = false;
         // `cursor_up` keeps `replacing` within `screen.len()` unless the
         // window is blind, so the subtraction below cannot underflow.
@@ -134,17 +149,21 @@ impl<R> AnsiLines<R> {
             _ if self.blind => None,
             n => Some(self.screen.len() - n),
         };
+        // A row that spilled went out a read at a time and holds no bytes a
+        // repaint can be compared to.
         let repeat = match target {
-            Some(i) => self.screen[i].as_deref() == Some(row.as_slice()),
-            None => false,
+            Some(i) if !spilled => self.screen[i].as_deref() == Some(row.as_slice()),
+            _ => false,
         };
         if !repeat {
             text.extend_from_slice(&row);
-            text.push(b'\n');
+            if line_end {
+                text.push(b'\n');
+            }
         }
-        // A row too long to keep still holds a slot, as `None`. A repaint
-        // against it is then written.
-        let kept = (row.len() <= SCREEN_ROW_BYTES).then_some(row);
+        // A spilled row still holds its slot, as `None`, so a repaint
+        // against it is written.
+        let kept = (!spilled).then_some(row);
         match (target, repeat) {
             (Some(i), false) => self.screen[i] = kept,
             (None, false) => {
@@ -156,6 +175,9 @@ impl<R> AnsiLines<R> {
             (_, true) => {}
         }
         self.replacing = self.replacing.saturating_sub(1);
+        if self.replacing == 0 {
+            self.blind = false;
+        }
     }
 
     /// Resolves a pending `\r` as a bare one.
@@ -169,11 +191,11 @@ impl<R> AnsiLines<R> {
     /// Marks the rows ahead as replacing the last `rows` kept rows.
     ///
     /// A window past what is kept is blind: it names rows the filter never
-    /// saw. Every row in it is written. The bound at [`SCREEN_ROWS`] stops
-    /// one stray cursor-up from blinding the filter for good.
+    /// saw, and stays blind until it ends. The bound at [`SCREEN_ROWS`]
+    /// stops one stray cursor-up from blinding the filter for good.
     fn cursor_up(&mut self, rows: usize) {
         let total = self.replacing.saturating_add(rows);
-        self.blind = total > self.screen.len();
+        self.blind |= total > self.screen.len();
         self.replacing = total.min(SCREEN_ROWS);
     }
 
@@ -276,7 +298,7 @@ impl<R> AnsiLines<R> {
             b'\r' => self.cr_pending = true,
             b'\n' => {
                 self.cr_pending = false;
-                self.end_row(text);
+                self.end_row(text, true);
             }
             0x1b => {
                 self.settle_cr(text);
@@ -286,12 +308,26 @@ impl<R> AnsiLines<R> {
             0x00..=0x08 | 0x0b..=0x0c | 0x0e..=0x1a | 0x1c..=0x1f | 0x7f => {}
             _ => {
                 self.settle_cr(text);
-                self.row.push(byte);
+                self.push_byte(byte, text);
                 if byte != b'\t' && byte != b' ' {
                     self.line_has_text = true;
                 }
             }
         }
+    }
+
+    /// Adds a visible byte to the row being written. A row that reaches
+    /// [`SCREEN_ROW_BYTES`] goes out as it is read, so a run of bytes with no
+    /// line end costs one read and never the whole run.
+    fn push_byte(&mut self, byte: u8, text: &mut Vec<u8>) {
+        self.row.push(byte);
+        if self.row.len() < SCREEN_ROW_BYTES {
+            return;
+        }
+        text.extend_from_slice(&self.row);
+        self.row.clear();
+        self.spilling = true;
+        self.line_has_text = true;
     }
 
     /// Moves `text` into `ready`, holding back a character cut short at its
@@ -346,10 +382,12 @@ impl<R: AsyncRead + Unpin> AsyncRead for AnsiLines<R> {
             if read.filled().is_empty() {
                 this.eof = true;
                 this.settle_cr(&mut text);
-                // A last row with no line end goes out as it stands: no
-                // newline is owed to a stream that has none left.
-                text.extend_from_slice(&this.row);
-                this.row.clear();
+                // A last row with no line end is compared like any other, so
+                // an unchanged one is still dropped, but no newline is owed
+                // to a stream that has none left.
+                if !this.row.is_empty() {
+                    this.end_row(&mut text, false);
+                }
             }
             for &byte in read.filled() {
                 this.step(byte, &mut text);
@@ -398,6 +436,11 @@ mod tests {
             .await
             .expect("the filter's output must be valid UTF-8");
         text
+    }
+
+    /// `n` rows of `r0`, `r1` and so on, each ended by a newline.
+    fn rows(n: usize) -> String {
+        (0..n).map(|row| format!("r{row}\n")).collect()
     }
 
     #[tokio::test]
@@ -493,6 +536,79 @@ mod tests {
             filtered(&[b"one\ntwo\n\x1b[9Aone\ntwo\n"]).await,
             "one\ntwo\none\ntwo\n"
         );
+    }
+
+    #[tokio::test]
+    async fn stacked_cursor_ups_open_one_window_past_the_kept_rows() {
+        // Two cursor-ups of 2 over 3 kept rows reach past them together, so
+        // the frame they name is written whole.
+        assert_eq!(
+            filtered(&[b"one\ntwo\nthree\n\x1b[2A\x1b[2Aone\ntwo\nthree\n"]).await,
+            "one\ntwo\nthree\none\ntwo\nthree\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_blind_window_stays_blind_until_it_ends() {
+        // The window the first cursor-up opens is still open at the second,
+        // so the row after it is written rather than dropped against an
+        // unrelated kept row.
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[3AX\n\x1b[1Aone\n"]).await,
+            "one\ntwo\nX\none\n"
+        );
+        // Once the window drains, a cursor-up inside the kept rows dedups.
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[3Ax\ny\nz\n\x1b[3Ax\ny\nz\n"]).await,
+            "one\ntwo\nx\ny\nz\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_repaint_inside_the_kept_rows_writes_nothing_at_the_cap() {
+        let screen = rows(SCREEN_ROWS);
+        let input = format!("{screen}\x1b[{SCREEN_ROWS}A{screen}");
+        assert_eq!(filtered(&[input.as_bytes()]).await, screen);
+    }
+
+    #[tokio::test]
+    async fn a_repaint_past_the_cap_writes_every_row() {
+        let screen = rows(SCREEN_ROWS + 1);
+        let input = format!("{screen}\x1b[{}A{screen}", SCREEN_ROWS + 1);
+        let chunks: Vec<&[u8]> = input.as_bytes().chunks(512).collect();
+        assert_eq!(filtered(&chunks).await, format!("{screen}{screen}"));
+    }
+
+    #[tokio::test]
+    async fn a_row_past_the_kept_cap_goes_out_as_it_is_read() {
+        let long: String = core::iter::repeat_n('x', SCREEN_ROW_BYTES * 3).collect();
+        // A row that reaches the cap is never kept, so a repaint against it
+        // is written like any other.
+        let input = format!("{long}\n{long}\n\x1b[1A{long}\n");
+        let chunks: Vec<&[u8]> = input.as_bytes().chunks(512).collect();
+        assert_eq!(filtered(&chunks).await, format!("{long}\n{long}\n{long}\n"));
+    }
+
+    #[tokio::test]
+    async fn a_repaint_that_ends_the_stream_drops_its_unchanged_last_row() {
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[2Aone\ntwo"]).await,
+            "one\ntwo\n"
+        );
+        // A last row that changed goes out, with no newline owed to it.
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[2Aone\nTWO"]).await,
+            "one\ntwo\nTWO"
+        );
+    }
+
+    #[tokio::test]
+    async fn whitespace_a_cursor_move_leaves_behind_is_not_part_of_the_next_row() {
+        // The space sits on the row the cursor left, so the repaint below it
+        // is still the unchanged `one` it is.
+        assert_eq!(filtered(&[b"one\r\n \x1b[A\rone\r\n"]).await, "one\n");
+        // A whitespace-only row a real newline ends is still a row.
+        assert_eq!(filtered(&[b"a\n   \nb\n"]).await, "a\n   \nb\n");
     }
 
     #[tokio::test]
