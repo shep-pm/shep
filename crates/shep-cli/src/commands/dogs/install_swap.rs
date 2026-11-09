@@ -1,10 +1,12 @@
 //! Replacing a dog adopted from a path with a receipt-backed catalogue build.
 
+use std::path::PathBuf;
+
 use shep_core::paths::ShepPaths;
 
 use crate::cli::InstallArgs;
 use crate::commands::copy::confirm::Answer;
-use crate::commands::shep_toml::ShepToml;
+use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::dog_index::AvailableDog;
 use crate::exit::ExitCode;
 use crate::output::Streams;
@@ -26,13 +28,11 @@ pub(super) fn confirm(
     let name = dog.adopt_as.as_str();
     if !super::install::is_path_safe(name)
         || (!dog.is_installable() && args.git_ref.is_none())
-        || receipt::receipt_path(paths, name).exists()
     {
         return Ok(true);
     }
-    let config = ShepToml::read_only(&paths.daemon_config)
-        .map_err(|err| super::fail_config(streams, &err))?;
-    let Some(path) = config.adopted_dog_path(name) else {
+    let Some(replacement) = replacement(paths, name)
+        .map_err(|err| super::fail_config(streams, &err))? else {
         return Ok(true);
     };
     if args.yes {
@@ -40,7 +40,7 @@ pub(super) fn confirm(
     }
     let question = format!(
         "Replace adopted {name} at {} with the catalogue build?",
-        path.display()
+        replacement.path.display()
     );
     if !input.is_terminal() {
         return Err(streams.fail(
@@ -57,4 +57,26 @@ pub(super) fn confirm(
             &format!("nothing was changed: the question could not be read ({reason})"),
         )),
     }
+}
+
+/// The adopted path and enabled state a catalogue install replaces.
+#[derive(Debug)]
+pub(super) struct Replacement {
+    pub(super) path: PathBuf,
+    pub(super) enable: bool,
+}
+
+/// Reads an adoption only when no install receipt backs it.
+///
+/// # Errors
+/// `shep.toml` cannot be read or parsed.
+pub(super) fn replacement(paths: &ShepPaths, name: &str) -> Result<Option<Replacement>, ShepTomlError> {
+    if receipt::receipt_path(paths, name).exists() {
+        return Ok(None);
+    }
+    let config = ShepToml::read_only(&paths.daemon_config)?;
+    Ok(config.adopted_dog_path(name).map(|path| Replacement {
+        path,
+        enable: config.enabled_dog_names().iter().any(|enabled| enabled == name),
+    }))
 }

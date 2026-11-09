@@ -541,6 +541,10 @@ pub(super) async fn adopt_fetched(
         upgrading,
     } = fetched;
     let (name, package) = (dog.adopt_as.as_str(), dog.package.as_str());
+    let replacement = match super::install_swap::replacement(paths, name) {
+        Ok(replacement) => replacement,
+        Err(err) => return super::fail_config(streams, &err),
+    };
     let written = receipt::write(
         paths,
         name,
@@ -602,8 +606,8 @@ pub(super) async fn adopt_fetched(
         },
         None => Flow {
             verb: "install",
-            enable: !args.no_enable,
-            restart: false,
+            enable: replacement.as_ref().map_or(!args.no_enable, |old| old.enable),
+            restart: replacement.is_some(),
         },
     };
     if let Some(progress) = &progress {
