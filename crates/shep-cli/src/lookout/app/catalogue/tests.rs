@@ -107,7 +107,11 @@ fn an_enabled_adopted_dog_without_a_receipt_still_reads_adopted() {
     let config = home.config(
         "[daemon]\nenabled_dogs = [\"hand\"]\n[daemon.adopted_dogs]\nhand = \"/bin/shep-hand\"\n",
     );
-    let rows = build_rows(&index_of(&[row("hand", "logs", "0.1.0")]), &home.paths, &config);
+    let rows = build_rows(
+        &index_of(&[row("hand", "logs", "0.1.0")]),
+        &home.paths,
+        &config,
+    );
     assert_eq!(state_of(&rows, "hand"), "adopted");
 }
 

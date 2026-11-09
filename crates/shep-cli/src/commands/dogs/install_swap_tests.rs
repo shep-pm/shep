@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use super::consent::Input;
-use super::install_tests::{Fixture, args, config, enabled, from_the_row, row, run, typing};
+use super::install_tests::{
+    Fixture, MANIFEST, args, config, enabled, from_the_row, row, run, typing,
+};
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::dog_index::{AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
@@ -25,7 +27,8 @@ fn adopted(fixture: &Fixture, enable: bool) -> PathBuf {
             cfg.disable_dog("otel");
         }
         Ok::<_, ShepTomlError>(())
-    }).unwrap();
+    })
+    .unwrap();
     let mut text = std::fs::read_to_string(&fixture.paths.daemon_config).unwrap();
     text.push_str("\n[dog.otel]\nlimit = 17\n");
     std::fs::write(&fixture.paths.daemon_config, text).unwrap();
@@ -39,10 +42,26 @@ async fn declining_a_swap_names_the_adopted_path_and_changes_nothing() {
     let old = adopted(&fixture, true);
     let before = std::fs::read(&fixture.paths.daemon_config).unwrap();
     let reach = fixture.reach(from_the_row());
-    let (code, _, err) = run(&fixture, &cargo_row(), &args(false, false), &reach, typing(Some("n\n"))).await;
+    let (code, _, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(false, false),
+        &reach,
+        typing(Some("n\n")),
+    )
+    .await;
     assert_eq!(code, ExitCode::Success, "{err}");
-    assert!(err.contains(&format!("Replace adopted otel at {} with the catalogue build?", old.display())), "{err}");
-    assert!(!fixture.argv().exists(), "nothing was built before confirmation");
+    assert!(
+        err.contains(&format!(
+            "Replace adopted otel at {} with the catalogue build?",
+            old.display()
+        )),
+        "{err}"
+    );
+    assert!(
+        !fixture.argv().exists(),
+        "nothing was built before confirmation"
+    );
     assert_eq!(std::fs::read(&fixture.paths.daemon_config).unwrap(), before);
     assert_eq!(std::fs::read_to_string(old).unwrap(), "old binary");
     assert!(!fixture.paths.dogs_dir.join("otel/receipt.json").exists());
@@ -54,14 +73,27 @@ async fn a_cli_swap_records_a_receipt_and_preserves_the_name_config_and_disabled
     let fixture = Fixture::new();
     let old = adopted(&fixture, false);
     let reach = fixture.reach(from_the_row());
-    let (code, _, err) = run(&fixture, &cargo_row(), &args(false, false), &reach, typing(Some("y\ny\n"))).await;
+    let (code, _, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(false, false),
+        &reach,
+        typing(Some("y\ny\n")),
+    )
+    .await;
     assert_eq!(code, ExitCode::Success, "{err}");
     assert!(!enabled(&fixture), "a disabled adopted dog stays disabled");
     let binary = fixture.paths.dogs_dir.join("otel/0.2.4/bin/shep-otel");
-    assert_eq!(config(&fixture).adopted_dog_path("otel"), Some(binary.canonicalize().unwrap()));
+    assert_eq!(
+        config(&fixture).adopted_dog_path("otel"),
+        Some(binary.canonicalize().unwrap())
+    );
     let text = std::fs::read_to_string(&fixture.paths.daemon_config).unwrap();
     assert!(text.contains("[dog.otel]\nlimit = 17"), "{text}");
-    let receipt: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture.paths.dogs_dir.join("otel/receipt.json")).unwrap()).unwrap();
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(fixture.paths.dogs_dir.join("otel/receipt.json")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(receipt["row"]["adopt_as"], "otel");
     assert_eq!(receipt["package"], "shep-otel");
     assert_eq!(std::fs::read_to_string(&old).unwrap(), "old binary");
@@ -89,6 +121,38 @@ async fn the_old_binary_is_parked_until_the_swap_commits() {
     let (code, _, err) = run(&fixture, &cargo_row(), &args(false, false), &reach, input).await;
     assert_eq!(code, ExitCode::Success, "{err}");
     assert!(enabled(&fixture));
-    assert!(!parked.exists(), "the committed swap removes its parked copy");
+    assert!(
+        !parked.exists(),
+        "the committed swap removes its parked copy"
+    );
     assert_eq!(std::fs::read_to_string(old).unwrap(), "old binary");
+}
+
+// Real cargo and manifest subprocesses need the wall clock.
+#[tokio::test]
+async fn a_refused_swap_restores_an_adopted_binary_at_the_install_target_and_leaves_no_receipt() {
+    let fixture = Fixture::new();
+    let old = adopted(&fixture, true);
+    let binary = fixture.paths.dogs_dir.join("otel/0.2.4/bin/shep-otel");
+    std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+    std::fs::rename(old, &binary).unwrap();
+    ShepToml::try_edit(&fixture.paths.daemon_config, |cfg| {
+        cfg.adopt_dog("otel", &binary, false)
+    })
+    .unwrap();
+    let before = std::fs::read(&fixture.paths.daemon_config).unwrap();
+    fixture.builds_manifest(&MANIFEST.replace("flock.read", "future.unknown"));
+    let reach = fixture.reach(from_the_row());
+    let (code, _, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
+    assert_eq!(code, ExitCode::InvalidConfig, "{err}");
+    assert_eq!(std::fs::read_to_string(binary).unwrap(), "old binary");
+    assert_eq!(std::fs::read(&fixture.paths.daemon_config).unwrap(), before);
+    assert!(!fixture.paths.dogs_dir.join("otel/receipt.json").exists());
 }

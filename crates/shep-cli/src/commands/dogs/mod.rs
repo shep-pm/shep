@@ -75,9 +75,9 @@ mod install_download_tests;
 #[cfg(all(test, unix))]
 mod install_ref_tests;
 #[cfg(all(test, unix))]
-mod install_tests;
-#[cfg(all(test, unix))]
 mod install_swap_tests;
+#[cfg(all(test, unix))]
+mod install_tests;
 #[cfg(all(test, unix))]
 mod manifest_adoption_tests;
 #[cfg(all(test, unix))]

@@ -222,7 +222,13 @@ pub(super) async fn install_dog(
 ) -> ExitCode {
     match super::install_swap::confirm(streams, paths, args, input, dog) {
         Ok(true) => {}
-        Ok(false) => return ExitCode::Success,
+        Ok(false) => {
+            streams.aside(
+                "dogs_install_declined",
+                &format!("nothing was changed: {} stays as adopted", dog.adopt_as),
+            );
+            return ExitCode::Success;
+        }
         Err(code) => return code,
     }
     let mut fetched = Vec::new();
@@ -607,7 +613,9 @@ pub(super) async fn adopt_fetched(
         },
         None => Flow {
             verb: "install",
-            enable: replacement.as_ref().map_or(!args.no_enable, |old| old.enable),
+            enable: replacement
+                .as_ref()
+                .map_or(!args.no_enable, |old| old.enable),
             restart: replacement.is_some(),
         },
     };

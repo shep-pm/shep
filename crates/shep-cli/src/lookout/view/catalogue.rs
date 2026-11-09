@@ -103,7 +103,10 @@ fn draw_list(
         .max(STATE_MIN);
     let line = |cells: [&str; 5], style| {
         let mut text = String::new();
-        for (cell, width) in cells.into_iter().zip([name, package, category, version, state]) {
+        for (cell, width) in cells
+            .into_iter()
+            .zip([name, package, category, version, state])
+        {
             if width > 0 {
                 text.push_str(&fit(cell, width));
             }
@@ -113,7 +116,10 @@ fn draw_list(
     buffer.set_line(
         area.x + GUTTER,
         y,
-        &line(["NAME", "PACKAGE", "CATEGORY", "VERSION", "STATE"], palette.muted()),
+        &line(
+            ["NAME", "PACKAGE", "CATEGORY", "VERSION", "STATE"],
+            palette.muted(),
+        ),
         table,
     );
     y += 1;

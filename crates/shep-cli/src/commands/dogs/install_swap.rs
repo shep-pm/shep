@@ -27,13 +27,12 @@ pub(super) fn confirm(
     dog: &AvailableDog,
 ) -> Result<bool, ExitCode> {
     let name = dog.adopt_as.as_str();
-    if !super::install::is_path_safe(name)
-        || (!dog.is_installable() && args.git_ref.is_none())
-    {
+    if !super::install::is_path_safe(name) || (!dog.is_installable() && args.git_ref.is_none()) {
         return Ok(true);
     }
-    let Some(replacement) = replacement(paths, name)
-        .map_err(|err| super::fail_config(streams, &err))? else {
+    let Some(replacement) =
+        replacement(paths, name).map_err(|err| super::fail_config(streams, &err))?
+    else {
         return Ok(true);
     };
     if args.yes {
@@ -71,14 +70,20 @@ pub(super) struct Replacement {
 ///
 /// # Errors
 /// `shep.toml` cannot be read or parsed.
-pub(super) fn replacement(paths: &ShepPaths, name: &str) -> Result<Option<Replacement>, ShepTomlError> {
+pub(super) fn replacement(
+    paths: &ShepPaths,
+    name: &str,
+) -> Result<Option<Replacement>, ShepTomlError> {
     if receipt::receipt_path(paths, name).exists() {
         return Ok(None);
     }
     let config = ShepToml::read_only(&paths.daemon_config)?;
     Ok(config.adopted_dog_path(name).map(|path| Replacement {
         path,
-        enable: config.enabled_dog_names().iter().any(|enabled| enabled == name),
+        enable: config
+            .enabled_dog_names()
+            .iter()
+            .any(|enabled| enabled == name),
     }))
 }
 
@@ -100,10 +105,14 @@ pub(super) fn park(
     {
         files.push(&old.path);
     }
-    Kept::park(&files).map_err(|err| {
+    let mut kept = Kept::park(&files).map_err(|err| {
         streams.fail(
             ExitCode::Failure,
             &format!("setting aside the installed {name}: {err}"),
         )
-    })
+    })?;
+    if replacement.is_some() {
+        kept.track_new(receipt_file);
+    }
+    Ok(kept)
 }

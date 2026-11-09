@@ -121,7 +121,13 @@ fn an_adopted_entry_offers_install_but_never_upgrade() {
     assert!(app.can_install(&app.catalogue_rows()[0]));
     assert!(!app.can_upgrade(&app.catalogue_rows()[0]));
     app.update(Msg::Key(KeyPress::Confirm));
-    assert!(matches!(app.update(Msg::Key(KeyPress::Confirm)), Effect::StartDogJob { job: Job::Install { .. }, .. }));
+    assert!(matches!(
+        app.update(Msg::Key(KeyPress::Confirm)),
+        Effect::StartDogJob {
+            job: Job::Install { .. },
+            ..
+        }
+    ));
     app.set_control_for_tests(Control::ReadOnly);
     assert!(!app.can_install(&app.catalogue_rows()[0]));
 }

@@ -17,7 +17,7 @@ const PARKED: &str = ".kept";
 /// stays beside its original with the `.kept` suffix. [`Kept::commit`]
 /// deletes them instead.
 #[derive(Debug)]
-pub(super) struct Kept(Vec<(PathBuf, PathBuf)>);
+pub(super) struct Kept(Vec<(PathBuf, Option<PathBuf>)>);
 
 impl Kept {
     /// Copies each of `files` that exists to its `.kept` sibling.
@@ -31,15 +31,22 @@ impl Kept {
             parked.push(PARKED);
             let parked = PathBuf::from(parked);
             std::fs::copy(file, &parked)?;
-            kept.0.push(((*file).to_path_buf(), parked));
+            kept.0.push(((*file).to_path_buf(), Some(parked)));
         }
         Ok(kept)
+    }
+
+    /// Removes `file` on rollback. The caller ensures it did not exist before this install.
+    pub(super) fn track_new(&mut self, file: &Path) {
+        self.0.push((file.to_path_buf(), None));
     }
 
     /// Deletes the copies: the install they were taken for stands.
     pub(super) fn commit(mut self) {
         for (_original, parked) in std::mem::take(&mut self.0) {
-            let _ = std::fs::remove_file(parked);
+            if let Some(parked) = parked {
+                let _ = std::fs::remove_file(parked);
+            }
         }
     }
 }
@@ -49,7 +56,9 @@ impl Drop for Kept {
         for (original, parked) in self.0.drain(..) {
             // A rename onto an existing file fails on Windows.
             let _ = std::fs::remove_file(&original);
-            let _ = std::fs::rename(parked, original);
+            if let Some(parked) = parked {
+                let _ = std::fs::rename(parked, original);
+            }
         }
     }
 }
