@@ -30,6 +30,7 @@ use super::install_depends::{Catalog, adopt_in_order, gather};
 use super::install_download::download;
 use super::install_keep::Kept;
 use super::install_ref;
+use super::install_swap::park;
 use super::receipt::{self, HeldPin, Installer, Pinned, Receipt};
 use super::session::{Progress, Step};
 use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest, sha256_hex};
@@ -436,7 +437,7 @@ pub(super) async fn fetch_dog(
         }
         Plan::Download { prebuilt, version } => {
             let (root, binary) = version_paths(paths, name, package, version);
-            let kept = match park(streams, name, &binary, &receipt_file) {
+            let kept = match park(streams, paths, name, &binary, &receipt_file) {
                 Ok(kept) => kept,
                 Err(code) => return Err(code),
             };
@@ -460,7 +461,7 @@ pub(super) async fn fetch_dog(
         }
         Plan::Build { cargo, version } => {
             let (root, binary) = version_paths(paths, name, package, version);
-            let kept = match park(streams, name, &binary, &receipt_file) {
+            let kept = match park(streams, paths, name, &binary, &receipt_file) {
                 Ok(kept) => kept,
                 Err(code) => return Err(code),
             };
@@ -711,21 +712,6 @@ fn version_paths(
         .join("bin")
         .join(format!("{package}{}", std::env::consts::EXE_SUFFIX));
     (root, binary)
-}
-
-/// Copies the installed dog's binary and receipt aside; see [`Kept`].
-fn park(
-    streams: &mut Streams<'_>,
-    name: &str,
-    binary: &Path,
-    receipt_file: &Path,
-) -> Result<Kept, ExitCode> {
-    Kept::park(&[binary, receipt_file]).map_err(|err| {
-        streams.fail(
-            ExitCode::Failure,
-            &format!("setting aside the installed {name}: {err}"),
-        )
-    })
 }
 
 /// What put the binary on disk, kept until the receipt is written.

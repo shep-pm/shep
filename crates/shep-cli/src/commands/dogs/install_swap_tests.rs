@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use super::consent::Input;
 use super::install_tests::{Fixture, args, config, enabled, from_the_row, row, run, typing};
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::dog_index::{AvailableDog, DogSourceKind};
@@ -65,4 +66,29 @@ async fn a_cli_swap_records_a_receipt_and_preserves_the_name_config_and_disabled
     assert_eq!(receipt["package"], "shep-otel");
     assert_eq!(std::fs::read_to_string(&old).unwrap(), "old binary");
     assert!(!old.with_extension("kept").exists());
+}
+
+// Real cargo and manifest subprocesses need the wall clock.
+#[tokio::test]
+async fn the_old_binary_is_parked_until_the_swap_commits() {
+    let fixture = Fixture::new();
+    let old = adopted(&fixture, true);
+    let parked = old.with_extension("kept");
+    let reach = fixture.reach(from_the_row());
+    let old_read = old.clone();
+    let parked_read = parked.clone();
+    let input = Input::answering(move |prompt| {
+        if prompt.question().starts_with("Replace adopted") {
+            assert!(!parked_read.exists(), "confirmation precedes parking");
+        } else {
+            assert_eq!(std::fs::read_to_string(&parked_read).unwrap(), "old binary");
+            assert_eq!(std::fs::read_to_string(&old_read).unwrap(), "old binary");
+        }
+        true
+    });
+    let (code, _, err) = run(&fixture, &cargo_row(), &args(false, false), &reach, input).await;
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert!(enabled(&fixture));
+    assert!(!parked.exists(), "the committed swap removes its parked copy");
+    assert_eq!(std::fs::read_to_string(old).unwrap(), "old binary");
 }

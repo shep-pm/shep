@@ -1,6 +1,6 @@
 //! Replacing a dog adopted from a path with a receipt-backed catalogue build.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use shep_core::paths::ShepPaths;
 
@@ -12,6 +12,7 @@ use crate::exit::ExitCode;
 use crate::output::Streams;
 
 use super::consent::{Input, Prompt};
+use super::install_keep::Kept;
 use super::receipt;
 
 /// Asks before fetching a replacement for an adopted dog without a receipt.
@@ -79,4 +80,30 @@ pub(super) fn replacement(paths: &ShepPaths, name: &str) -> Result<Option<Replac
         path,
         enable: config.enabled_dog_names().iter().any(|enabled| enabled == name),
     }))
+}
+
+/// Parks the target binary, its receipt, and the adopted file it replaces.
+///
+/// # Errors
+/// The config cannot be read, or a file cannot be copied aside.
+pub(super) fn park(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    name: &str,
+    binary: &Path,
+    receipt_file: &Path,
+) -> Result<Kept, ExitCode> {
+    let replacement = replacement(paths, name).map_err(|err| super::fail_config(streams, &err))?;
+    let mut files = vec![binary, receipt_file];
+    if let Some(old) = &replacement
+        && old.path != binary
+    {
+        files.push(&old.path);
+    }
+    Kept::park(&files).map_err(|err| {
+        streams.fail(
+            ExitCode::Failure,
+            &format!("setting aside the installed {name}: {err}"),
+        )
+    })
 }
