@@ -13,15 +13,15 @@
       "category": "logs",
       "source": {
         "kind": "cargo",
-        "version": "0.2.11",
+        "version": "0.2.12",
         "sha256": {
-          "aarch64-apple-darwin": "1624861c5eca6b2f9d61bdc0f362b09d7c4187a174fa248d44f306f00752116d",
-          "aarch64-unknown-linux-gnu": "24c8372db5e7a0c9f96c9a4309d19b170c2a585de4e0c9e602ba043ccc187b5f",
-          "aarch64-unknown-linux-musl": "13c6d03053d6b87bf6b98d40d08761e14c99748b7de20ca0aecad090e504134c",
-          "x86_64-apple-darwin": "d8d5b6adebd2e65c084b723d9421dfdcf33d3bb970f21094b163e91a0113f5e2",
-          "x86_64-pc-windows-msvc": "b56d43cfef3afde328aca5ddcfdc8eb22182e63052ae8135266cf74d78010695",
-          "x86_64-unknown-linux-gnu": "8ed38fcb95ff33ea011bff11564174cda7385d8be5ace760936940110947f085",
-          "x86_64-unknown-linux-musl": "c90bd1120394ed7a21fec45e7e6081eb24c63553b58862d468dc53b2db5b8c5a"
+          "aarch64-apple-darwin": "1494f2cbfe244291a816e836686960b8890717848c1677e7007e0f8f08b79dfe",
+          "aarch64-unknown-linux-gnu": "1fb99bfa93651f13b475d5dd7f3d57edc09b9491fe03d4b251d682a6a5739798",
+          "aarch64-unknown-linux-musl": "2051cb2d80fb26ba5cb0dfcba58639bd270d752a8e0dd320ad4a977d7c03b097",
+          "x86_64-apple-darwin": "db90898ba14fa8a8f3d08a530ce14dd9576d71b08c6c21f60238140fe2e926a1",
+          "x86_64-pc-windows-msvc": "572c3e485759b3472f8986f73a8ad6fd5ebe423fc2696772688a069e48dd902c",
+          "x86_64-unknown-linux-gnu": "08372da727926c9a1d8fd9310a0ec10e768c996f26497707e95ef53482499e15",
+          "x86_64-unknown-linux-musl": "b1f061925c2fa5150505f0337ea99e6f4a586e42777057d09bdf5bc7b5384bb1"
         },
         "permissions": [
           {
