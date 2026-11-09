@@ -264,11 +264,6 @@ pub enum Commands {
     /// refuses it on a sha256 mismatch. Otherwise, or with `--cargo`, builds
     /// the approved version with `cargo install --locked`. Then it asks
     /// `shep adopt`'s grant question. Any other row exits 1.
-    ///
-    /// A dog adopted from a path, with no receipt, is swapped for the
-    /// catalogue build: it asks first, naming the path, and `--yes` skips the
-    /// question. The new build takes the same name, `[dog.<name>]` table and
-    /// enabled state, and the old file stays on disk.
     Install(InstallArgs),
     /// Upgrade an installed dog, with a way back
     ///
