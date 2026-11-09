@@ -238,9 +238,10 @@ release pull request titled one version and built at another is the mistake this
 guard exists to catch, so it is the one outcome the guard will not produce.
 
 `release-plz-pr.yml` runs it as the middle of that step's three guards. The
-other two still fail for a human: a release pull request that bumps no version,
-and one whose new changelog section is empty, are both shapes a person has to
-decide which case they are.
+other two fail for a human, with one exception: a release pull request that
+bumps no version closes itself when main already carries that version, below.
+One whose new changelog section is empty is still a shape a person has to
+decide which case it is.
 
 `scripts/test_fix_release_bump.py` builds a throwaway repository with a diamond
 in its history, a release branch cut the way release-plz cuts one, and a bare
@@ -251,6 +252,51 @@ it.
 
 What the guard does not do: it does not fix the walk. The next release pull
 request is built from the same under-read range and corrected again.
+
+### A release pull request opened from a checkout main moved past closes itself
+
+**A run can finish after the release it raced.** A Release PR run checks out
+main at the sha that triggered it, then waits its turn in the `release-plz-pr`
+concurrency group. A release pull request merges while it waits, or while it
+runs. Its checkout is behind main's tip now, release-plz finds no open release
+pull request, and it opens a new one from that stale tree at the version the
+release just shipped. GitHub bases that pull request on main's current tip, so
+its diff changes no version: the number it proposes is the one main already
+carries.
+
+It happened on [#1607](https://github.com/shep-pm/shep/pull/1607), and on three
+dogs on 2026-11-09 (shep-pm/shep-discord#36, shep-pm/shep-deploy#187,
+shep-pm/shep-paddock#107). Each sat red until someone closed it by hand.
+
+`release-plz-pr.yml` answers it in two places.
+
+- Its first step reads main's tip with `gh api` and skips the rest of the job
+  when that tip is no longer `github.sha`, logging both shas. It names main
+  rather than the ref the run came from, so a `workflow_dispatch` from a tag or
+  a branch skips too: that ref's tip would read as current for a checkout main
+  has moved past. Skipping costs nothing: every push that landed after this
+  checkout queued its own run in the `release-plz-pr` group, and a release
+  merge needs none.
+- The guard's "changes no version" branch closes the pull request when main's
+  tip is not `github.sha` and main's `Cargo.toml` at that tip names the version
+  the pull request's head names. It comments the version that already shipped,
+  deletes the branch, and ends green. Deleting the branch is the half that
+  matters: release-plz reuses a branch it finds, so a stale one left behind is
+  the next duplicate.
+
+A release pull request that bumps no version while main has not moved is still
+the no-op shape that looped on zendriver-rs on 2026-08-08, and it still fails
+red for a human to decide. The guard names which of the two it found.
+
+What closing it gives up: the duplicate is where the changelog lines for
+commits that landed while the release pull request was open got written. Those
+commits sit behind the tag the merge cut, so no later release range reads them,
+and merging the duplicate was the only way to land the lines. Closing it leaves
+them unlogged.
+
+Nothing here runs the workflow, so this shape comes from the four runs above
+rather than from a fixture. Each dog takes the same change in its own copy of
+`release-plz-pr.yml`.
 
 ### Auditing what already shipped
 
@@ -330,7 +376,9 @@ tag to push and no local `cargo publish` in the sequence.
 Two workflow files, one job each. `release-plz-pr.yml` maintains a pull
 request that bumps `[workspace.package]` and writes the changelogs from the
 conventional commits since the last release, on every push to `main`. Merging
-it is a hand decision, so several merges to `main` stack into one release.
+it is a hand decision, so several merges to `main` stack into one release. Its
+first step reads main's tip and opens nothing when main has moved past the
+checkout that run made (see the stale duplicate above).
 `release-plz-release.yml` runs on the push that merge makes and does nothing
 unless a manifest names a version that is not on crates.io. It tags, creates
 the GitHub release, and uploads in dependency order.
@@ -338,9 +386,10 @@ the GitHub release, and uploads in dependency order.
 **So a release needs one human step: merging the release pull request.**
 It stopped merging itself on 2026-09-19 (`e7a7dffb`), so a release waits for
 someone to decide the stacked changes are worth a version. The workflow turns
-red on a release pull request that bumps no version, and the `crates-io`
-environment will hold the publish if a required reviewer is ever configured
-there.
+red on a release pull request that bumps no version, unless main already
+carries the version it proposes, in which case it closes it, and the
+`crates-io` environment will hold the publish if a required reviewer is ever
+configured there.
 
 **One check is yours, deliberately.** `benches/versus-pm2/versus-pm2.sh
 --check` compares shep's performance with the committed baseline, and it

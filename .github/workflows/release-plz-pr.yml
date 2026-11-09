@@ -48,10 +48,53 @@ jobs:
     # write-capable token against GitHub's 360-minute default.
     timeout-minutes: 30
     steps:
+      # A run that starts just before a release pull request merges finishes
+      # after it. Its checkout is main from before that merge, so release-plz
+      # finds no open release pull request and opens a new one from the stale
+      # tree at the version that just shipped. It happened on #1607, and on
+      # three dogs on 2026-11-09 (shep-pm/shep-discord#36,
+      # shep-pm/shep-deploy#187, shep-pm/shep-paddock#107), each left red
+      # until someone closed it by hand. Reading main's tip before
+      # anything else is spent tells a stale run from a current one, and
+      # skipping a stale one costs nothing: every push that landed after this
+      # checkout queued its own run in the `release-plz-pr` group, and a
+      # release merge needs none.
+      - name: Skip a run main moved past
+        id: fresh
+        env:
+          # Read-only, and the job's own `contents: write` covers it. Not
+          # RELEASE_PLZ_TOKEN: this asks one question of the API and should
+          # not spend the token the write steps need.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # main, named, not `github.ref_name`. A workflow_dispatch from a
+          # tag or a branch names that ref, and its tip would read as
+          # current for a checkout that main has moved past. The release
+          # pull request is cut against main, so main's tip is the thing
+          # to compare against.
+          MAIN: main
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Fails closed. A run that cannot read the tip cannot tell whether
+          # it is stale, and opening a release pull request on that guess is
+          # the shape this step exists to stop.
+          tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${MAIN}" --jq .sha)" || {
+            echo "::error::could not read main's tip, so this run cannot tell whether its checkout is current."
+            exit 1
+          }
+          if [ "$tip" = "$RUN_SHA" ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            echo "main's tip is ${RUN_SHA}: this checkout is current."
+            exit 0
+          fi
+          echo "fresh=false" >> "$GITHUB_OUTPUT"
+          echo "main's tip is ${tip} and this run's checkout is ${RUN_SHA}, so main moved while this run queued."
+          echo "Skipping release-plz. The push that moved main queued its own run in the release-plz-pr group."
       # Every action here is pinned by commit, not by tag: this job holds
       # RELEASE_PLZ_TOKEN and CARGO_REGISTRY_TOKEN, a bigger risk for a
       # mutable tag than in a job that only runs tests.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ steps.fresh.outputs.fresh == 'true' }}
         with:
           # release-plz reads the commits since the last release tag, so a
           # shallow clone would give it nothing to write a changelog from.
@@ -62,18 +105,21 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        if: ${{ steps.fresh.outputs.fresh == 'true' }}
         with:
           # Pinning by SHA replaces the ref this action reads its default
           # toolchain from, so it fails without an explicit `toolchain:` here.
           toolchain: stable
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        if: ${{ steps.fresh.outputs.fresh == 'true' }}
 
       # Pinned by commit: this action holds contents:write and
       # pull-requests:write, so a mutable tag means trusting whatever it
       # later points at.
       - uses: release-plz/action@f67a7e724bdad4a0f6875f186060a0ca2770d76c # v0.5.147
         id: release-plz
+        if: ${{ steps.fresh.outputs.fresh == 'true' }}
         with:
           command: release-pr
         env:
@@ -83,7 +129,8 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       # Three checks on the branch release-plz just pushed. Two of them fail
-      # for a human to read. The middle one does not: release-plz's own walk
+      # for a human to read, and the first can also close the pull request
+      # itself, below. The middle one does not: release-plz's own walk
       # under-reads a diamond, so scripts/fix-release-bump.py writes what it
       # missed onto the release branch and pushes it, and a release PR that
       # came out too small comes back correct instead of red. The same push
@@ -95,11 +142,17 @@ jobs:
       # nothing publishes: a release still waits for a human to merge.
       - name: Guard the release PR's version and changelog
         id: guard
-        if: ${{ steps.release-plz.outputs.prs_created == 'true' }}
+        if: ${{ steps.fresh.outputs.fresh == 'true' && steps.release-plz.outputs.prs_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           PR_NUMBER: ${{ fromJSON(steps.release-plz.outputs.pr).number }}
+          # The close branch below asks whether main moved past this run's
+          # checkout, so the guard needs main's tip and the sha that
+          # checkout is at. Same reason as above: name main, not the ref
+          # this run was dispatched from.
+          MAIN: main
+          RUN_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -124,10 +177,48 @@ jobs:
             exit 1
           fi
           if [ "$base_version" = "$head_version" ]; then
+            # The other shape of "changes no version", and it closes itself.
+            # A run whose checkout main has since moved past opened this pull
+            # request from a tree that predates a release which has since
+            # shipped, and picked the version that release shipped: base and
+            # head agree because main already carries it. Read the tip again
+            # rather than trust the step above, since main can have moved
+            # during this run, and this is the last moment the pull request can
+            # be judged.
+            tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${MAIN}" --jq .sha)" || tip=""
+            tip_version=""
+            if [ -n "$tip" ] && [ "$tip" != "$RUN_SHA" ]; then
+              tip_version="$(manifest_version "$tip")" || tip_version=""
+            fi
+            if [ -n "$tip_version" ] && [ "$tip_version" = "$head_version" ]; then
+              shipped="$(printf '%s' "${head_version#version=}" | tr -d '"')"
+              note="Closed by the release guard: main at ${tip} already carries ${shipped} in Cargo.toml, so this pull request bumps nothing. It came from a run that checked out ${RUN_SHA}, before the release that shipped ${shipped} landed. The next push to main opens a release pull request from a current checkout."
+              # Deleting the branch is the half that matters: release-plz
+              # reuses a branch it finds, so a stale one left behind is the
+              # next duplicate. A branch GitHub already deleted is no reason to
+              # leave the pull request open, so the retry drops that flag.
+              if ! gh pr close "$PR_NUMBER" --comment "$note" --delete-branch; then
+                gh pr close "$PR_NUMBER" --comment "$note" || {
+                  echo "::error::could not close release PR #$PR_NUMBER. Left open for a human."
+                  exit 1
+                }
+              fi
+              echo "closed=true" >> "$GITHUB_OUTPUT"
+              echo "Closed release PR #$PR_NUMBER: main already carries ${shipped}."
+              exit 0
+            fi
             echo "::error::release PR #$PR_NUMBER changes no version in Cargo.toml."
             echo "::error::That is the no-op shape that looped on zendriver-rs on 2026-08-08, and also"
             echo "::error::what a hand-edited version leaves behind. Left open for a human: merge it if"
             echo "::error::the changelog entry is wanted, close it if this is a loop."
+            # Why it is not a stale duplicate, in the words a human reads.
+            if [ -z "$tip" ]; then
+              echo "::error::could not read main's tip, so this cannot be judged as a duplicate of a release that already shipped."
+            elif [ "$tip" = "$RUN_SHA" ]; then
+              echo "::error::main's tip is ${tip} and this run checked out ${RUN_SHA}, so main has not moved past this run."
+            else
+              echo "::error::main's tip ${tip} carries ${tip_version:-unread} and this pull request proposes ${head_version}, so it is not the version that already shipped."
+            fi
             exit 1
           fi
 
@@ -296,9 +387,12 @@ jobs:
       # Only where the repo's RELEASE_AUTO_MERGE variable is `true`, and only
       # past a guard that passed. Squash, for the reason at the top.
       # --match-head-commit binds the merge to the head the guard judged, so a
-      # push in between refuses instead of merging.
+      # push in between refuses instead of merging. `closed` is the guard's
+      # other green exit: a pull request it just closed has nothing to merge,
+      # and `gh pr merge` on a closed pull request would turn a run that did
+      # the right thing red.
       - name: Auto-merge the release PR
-        if: ${{ steps.release-plz.outputs.prs_created == 'true' && vars.RELEASE_AUTO_MERGE == 'true' }}
+        if: ${{ steps.fresh.outputs.fresh == 'true' && steps.guard.outputs.closed != 'true' && steps.release-plz.outputs.prs_created == 'true' && vars.RELEASE_AUTO_MERGE == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           PR_NUMBER: ${{ fromJSON(steps.release-plz.outputs.pr).number }}
