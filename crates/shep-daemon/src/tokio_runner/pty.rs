@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use rustix::fs::{self, Mode, OFlags};
+use rustix::process::Signal;
 use rustix::pty;
 use rustix::termios::{self, LocalModes, Winsize};
 use tokio::io::unix::AsyncFd;
@@ -27,11 +28,12 @@ use super::ansi::AnsiLines;
 use super::pump::write_line;
 use crate::runner::{PtyCommand, PtyError, PtyHandle, StdinWrite};
 
-/// Rows of every sheep's window. Fixed: nothing resizes it yet, and a program
-/// that wraps to the window should wrap once, wide enough for a log line.
+/// Rows of every sheep's window at spawn: fixed for every sheep, and a program
+/// that wraps to the window should wrap once, wide enough for a log line. An
+/// attach replaces it with the operator's own size.
 pub(super) const PTY_ROWS: u16 = 50;
 
-/// Columns of every sheep's window.
+/// Columns of every sheep's window at spawn.
 pub(super) const PTY_COLS: u16 = 200;
 
 /// A new master, close-on-exec from the moment it exists. The shepherd forks
@@ -67,6 +69,18 @@ fn set_window(fd: impl rustix::fd::AsFd, rows: u16, cols: u16) -> io::Result<()>
             ws_ypixel: 0,
         },
     )?)
+}
+
+/// Asks the terminal's foreground group to redraw, with `SIGWINCH`.
+///
+/// `TIOCSWINSZ` sends it only when the size changes, so a resize to the size
+/// the terminal already has must send it itself. Best effort: a terminal with
+/// no foreground group has nothing to ask, and a real change gets the kernel's
+/// signal beside this one.
+fn ask_for_a_redraw(fd: impl rustix::fd::AsFd) {
+    if let Ok(pgrp) = termios::tcgetpgrp(fd) {
+        let _ = rustix::process::kill_process_group(pgrp, Signal::WINCH);
+    }
 }
 
 /// The master end of a sheep's terminal, registered with the reactor.
@@ -293,6 +307,9 @@ impl PtyWriter {
             PtyCommand::Resize { rows, cols, done } => {
                 let result = set_window(self.fd.get_ref(), rows, cols)
                     .map_err(|error| PtyError::Failed(error.to_string()));
+                if result.is_ok() {
+                    ask_for_a_redraw(self.fd.get_ref());
+                }
                 let _ = done.send(result);
             }
         }

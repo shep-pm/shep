@@ -99,7 +99,7 @@ pub(crate) enum PtyCommand {
         /// Fires once the bytes have landed, or with why they could not.
         done: oneshot::Sender<Result<(), PtyError>>,
     },
-    /// Set the terminal's window size.
+    /// Set the terminal's window size and ask its foreground group to redraw.
     Resize {
         /// Rows of the new window.
         rows: u16,
@@ -192,8 +192,11 @@ impl PtyHandle {
         self.ask(|done| PtyCommand::Input { bytes, done }).await
     }
 
-    /// Sets the window to `rows` by `cols`. The kernel signals the child's
-    /// foreground group with `SIGWINCH`.
+    /// Sets the window to `rows` by `cols` and signals the child's foreground
+    /// group with `SIGWINCH`, whether or not the size changed.
+    ///
+    /// The kernel sends that signal only on a change, so an attach at the size
+    /// the terminal already has would otherwise draw nothing.
     ///
     /// # Errors
     ///

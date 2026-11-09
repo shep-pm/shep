@@ -8,6 +8,7 @@ use tokio::time::timeout;
 
 use super::super::CHANNEL_CAPACITY;
 use super::super::TokioRunner;
+use super::super::pty::{PTY_COLS, PTY_ROWS};
 use super::PUMP_DEADLINE;
 use super::log_text;
 use super::stop_signal::is_gone_within_deadline;
@@ -55,6 +56,21 @@ fn a_sheep_that_stays_up(
 ) -> (<TokioRunner as ProcessRunner>::Proc, ProcIo) {
     TokioRunner::new()
         .spawn(&pty_spec(dir, "exec /bin/sleep 60"))
+        .unwrap()
+}
+
+/// A sheep that stays up and logs one line for every `SIGWINCH` it catches.
+///
+/// The trap runs once the `sleep` the signal interrupted returns, so a case
+/// that counts signals reads one line per signal, not one per burst.
+fn a_sheep_that_traps_window_signals(
+    dir: &tempfile::TempDir,
+) -> (<TokioRunner as ProcessRunner>::Proc, ProcIo) {
+    TokioRunner::new()
+        .spawn(&pty_spec(
+            dir,
+            "trap 'echo winch' WINCH; echo ready; while :; do sleep 1; done",
+        ))
         .unwrap()
 }
 
@@ -318,6 +334,23 @@ async fn a_resize_reaches_the_child_as_a_new_window_size() {
     timeout(PUMP_DEADLINE, proc.wait())
         .await
         .expect("the script must exit");
+}
+
+#[tokio::test]
+async fn a_resize_to_the_same_size_still_signals_the_child() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut proc, mut io) = a_sheep_that_traps_window_signals(&dir);
+    let handle = handle_of(&io);
+    assert_eq!(next_log_line(&mut io).await, "ready");
+
+    // The size the sheep was spawned with, so the kernel signals neither
+    // resize and every `winch` line here is the shepherd's own.
+    handle.resize(PTY_ROWS, PTY_COLS).await.unwrap();
+    assert_eq!(next_log_line(&mut io).await, "winch");
+    handle.resize(PTY_ROWS, PTY_COLS).await.unwrap();
+    assert_eq!(next_log_line(&mut io).await, "winch");
+
+    proc.kill_tree().unwrap();
 }
 
 #[tokio::test]
