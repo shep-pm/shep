@@ -1,4 +1,8 @@
 //! [`AnsiLines`], the filter between a pty's master and the line reader.
+//!
+//! A full-screen sheep repaints by moving its cursor up and printing the
+//! frame again. The filter keeps the rows it wrote, so a repaint writes only
+//! the rows that changed.
 
 use core::pin::Pin;
 use core::task::{Context, Poll, ready};
@@ -26,12 +30,10 @@ const LINE_BREAKING_FINALS: &[u8] = b"ABCDEFGHJKXadef`";
 /// replaces.
 ///
 /// A pty opens at [`super::pty::PTY_ROWS`] 50 and `shep attach` resizes it to
-/// the operator's terminal. Past this the oldest rows go, and a cursor-up
-/// reaching past what is kept writes every row it names.
+/// the operator's terminal. Past this the oldest rows go.
 const SCREEN_ROWS: usize = 256;
 
-/// Bytes one kept row may hold: [`SCRATCH`] is what one read carries, and a
-/// row past it is not a screen row.
+/// Bytes one kept row may hold. [`SCRATCH`] is what one read carries.
 const SCREEN_ROW_BYTES: usize = SCRATCH;
 
 /// Where the filter is inside an escape sequence.
@@ -60,9 +62,6 @@ enum State {
 /// `\r` counts as one, and with a CSI that moves the cursor or erases ends a
 /// line that has text; `\r\n` becomes `\n`. The output is valid UTF-8 for
 /// `LineReader`, with `U+FFFD` for each invalid sequence.
-///
-/// A cursor-up CSI marks the rows after it as replacing the rows it moved
-/// over, and one that repeats what it replaces is not written again.
 pub(super) struct AnsiLines<R> {
     inner: R,
     state: State,
@@ -79,8 +78,8 @@ pub(super) struct AnsiLines<R> {
     /// Rows ahead that replace the tail of [`Self::screen`], from a cursor-up.
     /// Never past it unless [`Self::blind`] holds.
     replacing: usize,
-    /// That window reaches past what is kept, so it names nothing to compare
-    /// against and every row in it is written.
+    /// The window reaches past what is kept, so it names nothing to compare
+    /// against. Every row in it is written.
     blind: bool,
     /// Digits of the CSI's first parameter, saturating.
     csi_param: u32,
@@ -124,7 +123,7 @@ impl<R> AnsiLines<R> {
     }
 
     /// Ends the row being written. A row that repeats the one it replaces is
-    /// dropped; every other row is written and kept as a screen row.
+    /// dropped. Every other row is written and kept.
     fn end_row(&mut self, text: &mut Vec<u8>) {
         let row = core::mem::take(&mut self.row);
         self.line_has_text = false;
@@ -139,21 +138,24 @@ impl<R> AnsiLines<R> {
             Some(i) => self.screen[i].as_deref() == Some(row.as_slice()),
             None => false,
         };
-        match (target, repeat) {
-            (Some(i), false) => self.screen[i] = kept(&row),
-            (Some(_), true) => {}
-            (None, _) => {
-                if self.screen.len() == SCREEN_ROWS {
-                    self.screen.pop_front();
-                }
-                self.screen.push_back(kept(&row));
-            }
-        }
-        self.replacing = self.replacing.saturating_sub(1);
         if !repeat {
             text.extend_from_slice(&row);
             text.push(b'\n');
         }
+        // A row too long to keep still holds a slot, as `None`. A repaint
+        // against it is then written.
+        let kept = (row.len() <= SCREEN_ROW_BYTES).then_some(row);
+        match (target, repeat) {
+            (Some(i), false) => self.screen[i] = kept,
+            (None, false) => {
+                if self.screen.len() == SCREEN_ROWS {
+                    self.screen.pop_front();
+                }
+                self.screen.push_back(kept);
+            }
+            (_, true) => {}
+        }
+        self.replacing = self.replacing.saturating_sub(1);
     }
 
     /// Resolves a pending `\r` as a bare one.
@@ -166,10 +168,9 @@ impl<R> AnsiLines<R> {
 
     /// Marks the rows ahead as replacing the last `rows` kept rows.
     ///
-    /// A window past what is kept is blind: it names rows the filter has no
-    /// copy of, so every row in it is written. It is bounded at
-    /// [`SCREEN_ROWS`] so one stray cursor-up cannot blind the filter for
-    /// good.
+    /// A window past what is kept is blind: it names rows the filter never
+    /// saw. Every row in it is written. The bound at [`SCREEN_ROWS`] stops
+    /// one stray cursor-up from blinding the filter for good.
     fn cursor_up(&mut self, rows: usize) {
         let total = self.replacing.saturating_add(rows);
         self.blind = total > self.screen.len();
@@ -328,15 +329,6 @@ impl<R> AnsiLines<R> {
     }
 }
 
-/// `row` as a kept screen row, or `None` when it is too long to keep.
-fn kept(row: &[u8]) -> Option<Vec<u8>> {
-    if row.len() <= SCREEN_ROW_BYTES {
-        Some(row.to_vec())
-    } else {
-        None
-    }
-}
-
 impl<R: AsyncRead + Unpin> AsyncRead for AnsiLines<R> {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -468,6 +460,38 @@ mod tests {
         assert_eq!(
             filtered(&[b"one\ntwo\n\x1b[2Aone\ntwo\n"]).await,
             "one\ntwo\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_repainted_frame_writes_only_its_changed_rows() {
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[2Aone\nTWO\n"]).await,
+            "one\ntwo\nTWO\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_frame_longer_than_the_one_it_replaces_writes_its_extra_rows() {
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[2Aone\ntwo\nthree\n"]).await,
+            "one\ntwo\nthree\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_repainted_frame_split_across_reads_is_still_recognised() {
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[2", b"Aone\ntw", b"o\n"]).await,
+            "one\ntwo\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cursor_up_past_the_kept_rows_writes_every_row() {
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[9Aone\ntwo\n"]).await,
+            "one\ntwo\none\ntwo\n"
         );
     }
 
