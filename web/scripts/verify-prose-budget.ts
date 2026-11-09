@@ -530,7 +530,10 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 1678 for #1562: a pty sheep takes a whisper, and its echo.
   // Raised from 1726 for `shep attach` (#1569): the verb, its detach key, its
   // exit and its refusal are surface an operator has to be told about.
-  "talking-to-a-sheep": 1830,
+  // Raised from 1830 on #1629 for the redraw an attach asks for: an operator
+  // who attaches twice at one size has to be told the second attach draws a
+  // screen. Required content, not prose.
+  "talking-to-a-sheep": 1845,
   // Raised from 1330 on the same day and for the same feature. `host` is a
   // fourth key beside `data`, and its three spellings are three different
   // answers a script has to tell apart: an object, `null`, and no key at
