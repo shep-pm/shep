@@ -101,6 +101,22 @@ fn open_first_entry(app: &mut App) {
 }
 
 #[test]
+fn package_is_beside_name_and_drops_before_category() {
+    let app = app_on(three_rows(), false);
+    let frame = draw_to(&app, 120, HEIGHT);
+    assert_eq!(
+        words_of(&frame, "NAME"),
+        ["NAME", "PACKAGE", "CATEGORY", "VERSION", "STATE"]
+    );
+    assert_eq!(
+        words_of(&frame, "alpha"),
+        [">", "alpha", "shep-alpha", "logs", "0.2.1", "\u{2192}", "0.2.4", "enabled"]
+    );
+    let frame = draw_to(&app, WIDE, HEIGHT);
+    assert_eq!(words_of(&frame, "NAME"), ["NAME", "CATEGORY", "VERSION", "STATE"]);
+}
+
+#[test]
 fn the_list_at_80_columns_has_four_columns_and_marks_the_cursor() {
     let app = app_on(three_rows(), false);
 

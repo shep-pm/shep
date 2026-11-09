@@ -26,12 +26,17 @@ const BAND_LABEL: &str = "CATALOGUE   dogs the index lists";
 const LABEL_WIDTH: u16 = 13;
 
 /// The list's columns, widest first: the shortest `width` that gets the
-/// column set, and the widths of NAME, CATEGORY, VERSION and STATE in it.
+/// column set, and the widths of NAME, PACKAGE, CATEGORY and VERSION in it.
 /// A zero drops the column.
 ///
 /// STATE takes the rest of the row, so each floor is the widths above it plus
 /// [`STATE_MIN`].
-const TIERS: [(u16, [u16; 3]); 3] = [(70, [20, 13, 18]), (52, [20, 0, 18]), (0, [17, 0, 0])];
+const TIERS: [(u16, [u16; 4]); 4] = [
+    (94, [20, 24, 13, 18]),
+    (70, [20, 0, 13, 18]),
+    (52, [20, 0, 0, 18]),
+    (0, [17, 0, 0, 0]),
+];
 
 /// Longest STATE word, `not installed`, and a gap.
 const STATE_MIN: u16 = 14;
@@ -89,16 +94,16 @@ fn draw_list(
         return;
     }
     let table = area.width.saturating_sub(GUTTER);
-    let [name, category, version] = TIERS
+    let [name, package, category, version] = TIERS
         .iter()
         .find(|(least, _)| table >= *least)
-        .map_or([0; 3], |(_, widths)| *widths);
+        .map_or([0; 4], |(_, widths)| *widths);
     let state = table
-        .saturating_sub(name + category + version)
+        .saturating_sub(name + package + category + version)
         .max(STATE_MIN);
-    let line = |cells: [&str; 4], style| {
+    let line = |cells: [&str; 5], style| {
         let mut text = String::new();
-        for (cell, width) in cells.into_iter().zip([name, category, version, state]) {
+        for (cell, width) in cells.into_iter().zip([name, package, category, version, state]) {
             if width > 0 {
                 text.push_str(&fit(cell, width));
             }
@@ -108,7 +113,7 @@ fn draw_list(
     buffer.set_line(
         area.x + GUTTER,
         y,
-        &line(["NAME", "CATEGORY", "VERSION", "STATE"], palette.muted()),
+        &line(["NAME", "PACKAGE", "CATEGORY", "VERSION", "STATE"], palette.muted()),
         table,
     );
     y += 1;
@@ -136,6 +141,7 @@ fn draw_list(
             &line(
                 [
                     &row.dog.name,
+                    &row.dog.package,
                     &row.dog.category,
                     &row.version,
                     row.state.as_str(),
