@@ -285,6 +285,12 @@ A release pull request that bumps no version while main has not moved is still
 the no-op shape that looped on zendriver-rs on 2026-08-08, and it still fails
 red for a human to decide. The guard names which of the two it found.
 
+What closing it gives up: the duplicate is where the changelog lines for
+commits that landed while the release pull request was open got written. Those
+commits sit behind the tag the merge cut, so no later release range reads them,
+and merging the duplicate was the only way to land the lines. Closing it leaves
+them unlogged.
+
 Nothing here runs the workflow, so this shape comes from the four runs above
 rather than from a fixture. Each dog takes the same change in its own copy of
 `release-plz-pr.yml`.
