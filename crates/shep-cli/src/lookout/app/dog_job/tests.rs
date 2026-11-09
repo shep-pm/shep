@@ -116,6 +116,17 @@ fn open_tag(app: &App) -> u64 {
 }
 
 #[test]
+fn an_adopted_entry_offers_install_but_never_upgrade() {
+    let mut app = app_with_version(cargo_dog("otel"), "0.2.1 \u{2192} 0.2.4", DogState::Adopted);
+    assert!(app.can_install(&app.catalogue_rows()[0]));
+    assert!(!app.can_upgrade(&app.catalogue_rows()[0]));
+    app.update(Msg::Key(KeyPress::Confirm));
+    assert!(matches!(app.update(Msg::Key(KeyPress::Confirm)), Effect::StartDogJob { job: Job::Install { .. }, .. }));
+    app.set_control_for_tests(Control::ReadOnly);
+    assert!(!app.can_install(&app.catalogue_rows()[0]));
+}
+
+#[test]
 fn enter_on_an_installable_entry_starts_the_job_and_a_second_waits_for_it() {
     let mut app = app_with_row(cargo_dog("otel"), DogState::NotInstalled);
     app.update(Msg::Key(KeyPress::Confirm));
