@@ -228,6 +228,14 @@ $ shep disable metrics`}</CodeBlock>
       has no receipt and is refused: <code>shep adopt</code> is how it got
       there, and it is how you move it.
     </p>
+    <p>
+      <code>shep install &lt;dog&gt;</code> on such a dog swaps it for the
+      index build instead. It asks first, naming the adopted path, and{" "}
+      <code>--yes</code> skips the question; with no terminal and no{" "}
+      <code>--yes</code> it refuses before changing anything. The build keeps
+      the name, the <code>[dog.&lt;name&gt;]</code> table and the enabled
+      state, and the old file stays on disk.
+    </p>
     <CodeBlock>{`$ shep upgrade otel
 $ shep upgrade otel --ref fix-flush
 $ shep upgrade otel --release

@@ -138,11 +138,14 @@ pub struct InstallArgs {
     /// The dog to install: its `adopt_as` name in the community index, as
     /// `shep install` with no name lists it. With none, lists what `shep dogs
     /// --available` lists, with the install line under each dog that can be
-    /// installed.
+    /// installed. A dog adopted from a path, with no receipt, is swapped for the
+    /// catalogue build after a question naming the path. It keeps its name,
+    /// `[dog.<name>]` table and enabled state, and the old file stays on disk.
     pub dog: Option<String>,
-    /// Grant the dog everything it declares without asking. With no
-    /// terminal and no `--yes`, install fetches the dog and then refuses at
-    /// the grant question.
+    /// Grant the dog everything it declares without asking, and replace an
+    /// adopted dog without asking. With no terminal and no `--yes`, install
+    /// refuses before it replaces an adopted dog, and fetches the dog and then
+    /// refuses at the grant question otherwise.
     #[arg(short = 'y', long)]
     pub yes: bool,
     /// Stop after adopting: the dog is installed, recorded and granted, and left

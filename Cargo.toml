@@ -316,7 +316,7 @@ clap = { version = "4.6.6", default-features = false }
 #
 # Version 3.7.0, not "3": -Z minimal-versions resolves a bare "3" to 3.0.0,
 # an API nobody here has compiled.
-rmcp = { version = "3.7.0", default-features = false, features = ["server", "macros", "transport-io"] }
+rmcp = { version = "3.9.0",default-features = false, features = ["server", "macros", "transport-io"] }
 # Generates each whistle tool's input/output schema. Costs no extra crate:
 # rmcp's `server` feature already requires it. Declared directly because
 # `#[derive(JsonSchema)]` emits absolute `schemars::` paths, and rmcp only

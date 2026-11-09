@@ -94,12 +94,7 @@ pub(super) async fn acquire(
         .join("bin")
         .join(format!("{}{}", dog.package, std::env::consts::EXE_SUFFIX));
     let receipt_file = receipt::receipt_path(paths, &dog.adopt_as);
-    let kept = Kept::park(&[&receipt_file]).map_err(|err| {
-        streams.fail(
-            ExitCode::Failure,
-            &format!("setting aside the installed {}: {err}", dog.adopt_as),
-        )
-    })?;
+    let kept = super::install_swap::park(streams, paths, &dog.adopt_as, &binary, &receipt_file)?;
     place(&staging, &root, &binary).map_err(|err| {
         streams.fail(
             ExitCode::Failure,
