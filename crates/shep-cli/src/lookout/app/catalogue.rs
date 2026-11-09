@@ -24,13 +24,14 @@ mod tests;
 
 /// How far along a dog is on this machine.
 ///
-/// `Debug` is derived: three fieldless variants.
+/// `Debug` is derived: four fieldless variants.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DogState {
     /// Neither a receipt nor an adopted entry names it.
     NotInstalled,
-    /// A receipt or an adopted entry names it, and `[daemon] enabled_dogs`
-    /// does not.
+    /// An adopted entry names it, with no install receipt.
+    Adopted,
+    /// A receipt names it, and `[daemon] enabled_dogs` does not.
     Installed,
     /// Installed, and `[daemon] enabled_dogs` lists it.
     Enabled,
@@ -41,6 +42,7 @@ impl DogState {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::NotInstalled => "not installed",
+            Self::Adopted => "adopted",
             Self::Installed => "installed",
             Self::Enabled => "enabled",
         }
@@ -81,12 +83,14 @@ pub(crate) fn build_rows(index: &Index, paths: &ShepPaths, config: &ShepToml) ->
         .iter()
         .map(|dog| {
             let name = dog.adopt_as.as_str();
-            let is_installed =
-                adopted.iter().any(|adopted| adopted == name) || installed(paths, name).is_some();
+            let has_receipt = installed(paths, name).is_some();
+            let is_installed = adopted.iter().any(|adopted| adopted == name) || has_receipt;
             let (state, version) = if is_installed {
                 let path = config.adopted_dog_path(name).unwrap_or_default();
                 let origin = origins.of(name, Some(Path::new(&path)));
-                let state = if enabled.iter().any(|enabled| enabled == name) {
+                let state = if !has_receipt {
+                    DogState::Adopted
+                } else if enabled.iter().any(|enabled| enabled == name) {
                     DogState::Enabled
                 } else {
                     DogState::Installed
