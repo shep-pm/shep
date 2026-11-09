@@ -386,7 +386,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised again, to 5029, on #1492 for bare `shep upgrade`: what it lists,
   // what stops it before the dogs, the Windows rule and the reload step. An
   // operator running it needs each to know what was and was not changed.
-  dogs: 5029,
+  //
+  // Raised again, to 5085, on #1627 for `shep install` on an adopted dog: it
+  // replaces a file the operator put there, so the page says it asks first
+  // and what it keeps.
+  dogs: 5085,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.
@@ -431,7 +435,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised again, to 4440, on #1504 for "A dog's status tab": the tab keys,
   // the sections a dog can show, and what the tab says when the dog does not
   // answer. No other page describes the tab, and it is required content.
-  lookout: 4440,
+  //
+  // Raised again, to 4512, on #1627 for the PACKAGE column, the `adopted`
+  // state and the swap's confirm modal: no other page describes the
+  // catalogue screen.
+  lookout: 4512,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has
@@ -532,7 +540,10 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 1678 for #1562: a pty sheep takes a whisper, and its echo.
   // Raised from 1726 for `shep attach` (#1569): the verb, its detach key, its
   // exit and its refusal are surface an operator has to be told about.
-  "talking-to-a-sheep": 1830,
+  // Raised from 1830 on #1629 for the redraw an attach asks for: an operator
+  // who attaches twice at one size has to be told the second attach draws a
+  // screen. Required content, not prose.
+  "talking-to-a-sheep": 1845,
   // Raised from 1330 on the same day and for the same feature. `host` is a
   // fourth key beside `data`, and its three spellings are three different
   // answers a script has to tell apart: an object, `null`, and no key at

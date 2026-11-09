@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use rustix::fs::{self, Mode, OFlags};
+use rustix::process::{Pid, Signal};
 use rustix::pty;
 use rustix::termios::{self, LocalModes, Winsize};
 use tokio::io::unix::AsyncFd;
@@ -27,11 +28,12 @@ use super::ansi::AnsiLines;
 use super::pump::write_line;
 use crate::runner::{PtyCommand, PtyError, PtyHandle, StdinWrite};
 
-/// Rows of every sheep's window. Fixed: nothing resizes it yet, and a program
-/// that wraps to the window should wrap once, wide enough for a log line.
+/// Rows of every sheep's window at spawn: fixed for every sheep, and a program
+/// that wraps to the window should wrap once, wide enough for a log line. An
+/// attach replaces it with the operator's own size.
 pub(super) const PTY_ROWS: u16 = 50;
 
-/// Columns of every sheep's window.
+/// Columns of every sheep's window at spawn.
 pub(super) const PTY_COLS: u16 = 200;
 
 /// A new master, close-on-exec from the moment it exists. The shepherd forks
@@ -67,6 +69,49 @@ fn set_window(fd: impl rustix::fd::AsFd, rows: u16, cols: u16) -> io::Result<()>
             ws_ypixel: 0,
         },
     )?)
+}
+
+/// The group a resize asks to redraw: the terminal's own foreground group
+/// where it names one, and the group `sheep_pid` leads where it does not.
+///
+/// macOS answers `tcgetpgrp` with `ENOTTY` for any caller that does not hold
+/// that terminal as its controlling terminal (`TCGETPGRP(3)`), and the
+/// shepherd never holds it: the child takes it with `setsid` and
+/// `TIOCSCTTY` (`sys.rs`). The fallback is the same group until the sheep's
+/// app moves the terminal's foreground group onto one of its children.
+///
+/// # Errors
+///
+/// `sheep_pid` has no `kill(2)` form: 0, which would signal the shepherd's
+/// own group, or a number above `i32::MAX`.
+fn redraw_group(named: Option<Pid>, sheep_pid: u32) -> io::Result<Pid> {
+    named
+        .or_else(|| Pid::from_raw(i32::try_from(sheep_pid).ok()?))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("pid {sheep_pid} is not a signallable process id"),
+            )
+        })
+}
+
+/// Asks the sheep's terminal to redraw, with `SIGWINCH`.
+///
+/// `TIOCSWINSZ` sends it only when the size changes, so a resize to the size
+/// the terminal already has must send it itself. A resize that does change the
+/// size gets the kernel's signal beside this one.
+///
+/// # Errors
+///
+/// [`redraw_group`] refused the pid, or `kill(2)` failed (`ESRCH` for a sheep
+/// that is already gone).
+fn ask_for_a_redraw(fd: impl rustix::fd::AsFd, sheep_pid: u32) -> io::Result<()> {
+    let named = termios::tcgetpgrp(fd);
+    if let Err(error) = &named {
+        tracing::debug!(%error, "this terminal names no foreground group");
+    }
+    let group = redraw_group(named.ok(), sheep_pid)?;
+    Ok(rustix::process::kill_process_group(group, Signal::WINCH)?)
 }
 
 /// The master end of a sheep's terminal, registered with the reactor.
@@ -197,11 +242,13 @@ impl PtyMaster {
         PtyReader { master: self, tap }
     }
 
-    /// An [`AsyncWrite`] of keys to the child, over the same master.
-    pub(super) fn writer(&self) -> PtyWriter {
+    /// An [`AsyncWrite`] of keys to the child, over the same master, holding
+    /// `sheep_pid` as the group a resize asks to redraw.
+    pub(super) fn writer(&self, sheep_pid: u32) -> PtyWriter {
         PtyWriter {
             fd: Arc::clone(&self.fd),
             pending: 0,
+            sheep_pid,
         }
     }
 }
@@ -213,13 +260,18 @@ const PTY_TAP_CAPACITY: usize = 64;
 /// then the log pump, and one task typing into it for `whispers` and the
 /// handle alike.
 ///
+/// `sheep_pid` is the sheep that leads the group a resize asks to redraw.
 /// Returns what the log pump reads, and the handle. Must run inside a tokio
 /// runtime.
-pub(super) fn wire(master: PtyMaster, whispers: mpsc::Receiver<StdinWrite>) -> (Stdout, PtyHandle) {
+pub(super) fn wire(
+    master: PtyMaster,
+    whispers: mpsc::Receiver<StdinWrite>,
+    sheep_pid: u32,
+) -> (Stdout, PtyHandle) {
     let tap = Arc::new(broadcast::channel(PTY_TAP_CAPACITY).0);
     let (control, commands) = mpsc::channel(CHANNEL_CAPACITY);
     let handle = PtyHandle::new(&tap, control, Arc::clone(&master.closed));
-    spawn_pty_pump(master.writer(), whispers, commands);
+    spawn_pty_pump(master.writer(sheep_pid), whispers, commands);
     let stdout = Stdout::Terminal(AnsiLines::new(master.into_reader(tap)));
     (stdout, handle)
 }
@@ -278,6 +330,8 @@ pub(super) struct PtyWriter {
     /// Bytes typed since the last line end, which a cooked terminal still
     /// holds as one unfinished line.
     pending: usize,
+    /// The sheep whose terminal this is, for the group a resize signals.
+    sheep_pid: u32,
 }
 
 impl PtyWriter {
@@ -291,8 +345,20 @@ impl PtyWriter {
                 let _ = done.send(self.write_raw(&bytes).await);
             }
             PtyCommand::Resize { rows, cols, done } => {
+                // The answer is about the size. A redraw the shepherd could
+                // not ask for is its own to report, not a reason to fail an
+                // attach that got its window.
                 let result = set_window(self.fd.get_ref(), rows, cols)
                     .map_err(|error| PtyError::Failed(error.to_string()));
+                if result.is_ok()
+                    && let Err(error) = ask_for_a_redraw(self.fd.get_ref(), self.sheep_pid)
+                {
+                    tracing::warn!(
+                        pid = self.sheep_pid,
+                        %error,
+                        "a resize could not ask the sheep to redraw"
+                    );
+                }
                 let _ = done.send(result);
             }
         }
@@ -549,5 +615,36 @@ mod tests {
             refusal.to_string(),
             "a line of 1024 bytes is over the 1023 a terminal holds"
         );
+    }
+
+    /// The terminal's own foreground group is the one to ask.
+    #[test]
+    fn a_terminal_that_names_a_group_is_asked_there() {
+        assert_eq!(
+            redraw_group(Pid::from_raw(4242), 111).unwrap(),
+            Pid::from_raw(4242).unwrap()
+        );
+    }
+
+    /// A terminal that names none, which is what macOS answers a shepherd that
+    /// does not hold it as its controlling terminal, falls back to the group
+    /// the sheep leads.
+    #[test]
+    fn a_terminal_that_names_none_falls_back_to_the_sheeps_own_group() {
+        assert_eq!(
+            redraw_group(None, 111).unwrap(),
+            Pid::from_raw(111).unwrap()
+        );
+    }
+
+    /// A pid with no `kill(2)` form is refused rather than sent: `kill(-0)` is
+    /// `kill(0)`, the shepherd's own group.
+    #[test]
+    fn a_pid_with_no_kill_form_is_refused() {
+        assert_eq!(
+            redraw_group(None, 0).unwrap_err().to_string(),
+            "pid 0 is not a signallable process id"
+        );
+        assert!(redraw_group(None, u32::MAX).is_err());
     }
 }
