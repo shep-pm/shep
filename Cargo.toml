@@ -314,9 +314,15 @@ clap = { version = "4.6.6", default-features = false }
 # protocol, and tracking an SDK beats owning a parser for a wire format
 # still moving.
 #
-# Version 3.7.0, not "3": -Z minimal-versions resolves a bare "3" to 3.0.0,
+# Version 3.9.0, not "3": -Z minimal-versions resolves a bare "3" to 3.0.0,
 # an API nobody here has compiled.
-rmcp = { version = "3.9.0",default-features = false, features = ["server", "macros", "transport-io"] }
+#
+# 3.9.0 is also where RUSTSEC-2026-0462 is fixed, and a floor is what a fresh
+# resolve gets, whether CI's `cargo generate-lockfile -Z minimal-versions` or
+# a distro building from these manifests. shep names `transport-io` and never
+# builds the Streamable HTTP clients that advisory covers, but a floor
+# `cargo deny` refuses is still the wrong floor.
+rmcp = { version = "3.9.0", default-features = false, features = ["server", "macros", "transport-io"] }
 # Generates each whistle tool's input/output schema. Costs no extra crate:
 # rmcp's `server` feature already requires it. Declared directly because
 # `#[derive(JsonSchema)]` emits absolute `schemars::` paths, and rmcp only
