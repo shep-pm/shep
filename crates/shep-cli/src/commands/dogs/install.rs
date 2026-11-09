@@ -222,12 +222,12 @@ pub(super) async fn install_dog(
 ) -> ExitCode {
     match super::install_swap::confirm(streams, paths, args, input, dog) {
         Ok(true) => {}
+        // Not a success: lookout reads exit 0 as an install that landed.
         Ok(false) => {
-            streams.aside(
-                "dogs_install_declined",
+            return streams.fail(
+                ExitCode::Failure,
                 &format!("nothing was changed: {} stays as adopted", dog.adopt_as),
             );
-            return ExitCode::Success;
         }
         Err(code) => return code,
     }
@@ -613,9 +613,7 @@ pub(super) async fn adopt_fetched(
         },
         None => Flow {
             verb: "install",
-            enable: replacement
-                .as_ref()
-                .map_or(!args.no_enable, |old| old.enable),
+            enable: !args.no_enable && replacement.as_ref().is_none_or(|old| old.enable),
             restart: replacement.is_some(),
         },
     };

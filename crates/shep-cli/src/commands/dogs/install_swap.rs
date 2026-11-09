@@ -87,7 +87,11 @@ pub(super) fn replacement(
     }))
 }
 
-/// Parks the target binary, its receipt, and the adopted file it replaces.
+/// Parks the target binary and its receipt.
+///
+/// The adopted file is parked only when it is the target. Anywhere else the
+/// install never writes it, and a copy beside it could fail on a directory the
+/// operator cannot write.
 ///
 /// # Errors
 /// The config cannot be read, or a file cannot be copied aside.
@@ -99,13 +103,7 @@ pub(super) fn park(
     receipt_file: &Path,
 ) -> Result<Kept, ExitCode> {
     let replacement = replacement(paths, name).map_err(|err| super::fail_config(streams, &err))?;
-    let mut files = vec![binary, receipt_file];
-    if let Some(old) = &replacement
-        && old.path != binary
-    {
-        files.push(&old.path);
-    }
-    let mut kept = Kept::park(&files).map_err(|err| {
+    let mut kept = Kept::park(&[binary, receipt_file]).map_err(|err| {
         streams.fail(
             ExitCode::Failure,
             &format!("setting aside the installed {name}: {err}"),
