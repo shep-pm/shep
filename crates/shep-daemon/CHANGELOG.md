@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-11-09
+
+### Fixed
+
+- Shep attach redraws an idle pty sheep at an unchanged window size
+- Drop a pty repaint row identical to the one it replaces
+- Ask the sheep's own group to redraw when its terminal names none
+- Bound a pty row and keep a blind repaint window blind
+- Count a row an erase and a newline end as one screen row
+- Log a repainted pty row only when it changed
+
+
 ## [0.25.1] - 2026-11-09
 
 ### Fixed
