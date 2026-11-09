@@ -30,6 +30,7 @@ use super::install_depends::{Catalog, adopt_in_order, gather};
 use super::install_download::download;
 use super::install_keep::Kept;
 use super::install_ref;
+use super::install_swap::park;
 use super::receipt::{self, HeldPin, Installer, Pinned, Receipt};
 use super::session::{Progress, Step};
 use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest, sha256_hex};
@@ -219,6 +220,17 @@ pub(super) async fn install_dog(
     dog: &AvailableDog,
     catalog: &Catalog<'_>,
 ) -> ExitCode {
+    match super::install_swap::confirm(streams, paths, args, input, dog) {
+        Ok(true) => {}
+        // Not a success: lookout reads exit 0 as an install that landed.
+        Ok(false) => {
+            return streams.fail(
+                ExitCode::Failure,
+                &format!("nothing was changed: {} stays as adopted", dog.adopt_as),
+            );
+        }
+        Err(code) => return code,
+    }
     let mut fetched = Vec::new();
     if let Err(code) = gather(streams, paths, args, reach, catalog, dog, &mut fetched).await {
         return code;
@@ -431,7 +443,7 @@ pub(super) async fn fetch_dog(
         }
         Plan::Download { prebuilt, version } => {
             let (root, binary) = version_paths(paths, name, package, version);
-            let kept = match park(streams, name, &binary, &receipt_file) {
+            let kept = match park(streams, paths, name, &binary, &receipt_file) {
                 Ok(kept) => kept,
                 Err(code) => return Err(code),
             };
@@ -455,7 +467,7 @@ pub(super) async fn fetch_dog(
         }
         Plan::Build { cargo, version } => {
             let (root, binary) = version_paths(paths, name, package, version);
-            let kept = match park(streams, name, &binary, &receipt_file) {
+            let kept = match park(streams, paths, name, &binary, &receipt_file) {
                 Ok(kept) => kept,
                 Err(code) => return Err(code),
             };
@@ -536,6 +548,10 @@ pub(super) async fn adopt_fetched(
         upgrading,
     } = fetched;
     let (name, package) = (dog.adopt_as.as_str(), dog.package.as_str());
+    let replacement = match super::install_swap::replacement(paths, name) {
+        Ok(replacement) => replacement,
+        Err(err) => return super::fail_config(streams, &err),
+    };
     let written = receipt::write(
         paths,
         name,
@@ -597,8 +613,8 @@ pub(super) async fn adopt_fetched(
         },
         None => Flow {
             verb: "install",
-            enable: !args.no_enable,
-            restart: false,
+            enable: !args.no_enable && replacement.as_ref().is_none_or(|old| old.enable),
+            restart: replacement.is_some(),
         },
     };
     if let Some(progress) = &progress {
@@ -702,21 +718,6 @@ fn version_paths(
         .join("bin")
         .join(format!("{package}{}", std::env::consts::EXE_SUFFIX));
     (root, binary)
-}
-
-/// Copies the installed dog's binary and receipt aside; see [`Kept`].
-fn park(
-    streams: &mut Streams<'_>,
-    name: &str,
-    binary: &Path,
-    receipt_file: &Path,
-) -> Result<Kept, ExitCode> {
-    Kept::park(&[binary, receipt_file]).map_err(|err| {
-        streams.fail(
-            ExitCode::Failure,
-            &format!("setting aside the installed {name}: {err}"),
-        )
-    })
 }
 
 /// What put the binary on disk, kept until the receipt is written.

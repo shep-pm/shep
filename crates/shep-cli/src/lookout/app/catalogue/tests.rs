@@ -70,7 +70,7 @@ fn state_of(rows: &[CatalogueRow], name: &str) -> &'static str {
 }
 
 #[test]
-fn rows_say_not_installed_installed_or_enabled_from_the_receipt_and_the_config() {
+fn rows_distinguish_adopted_dogs_without_receipts_from_installed_and_enabled_dogs() {
     let home = Home::new();
     home.receipt("otel", "shep-otel", "0.1.0");
     home.receipt("rotate", "shep-rotate", "0.1.0");
@@ -95,10 +95,24 @@ fn rows_say_not_installed_installed_or_enabled_from_the_receipt_and_the_config()
     );
     assert_eq!(
         state_of(&rows, "hand"),
-        "installed",
+        "adopted",
         "adopted with no receipt"
     );
     assert_eq!(state_of(&rows, "rotate"), "enabled");
+}
+
+#[test]
+fn an_enabled_adopted_dog_without_a_receipt_still_reads_adopted() {
+    let home = Home::new();
+    let config = home.config(
+        "[daemon]\nenabled_dogs = [\"hand\"]\n[daemon.adopted_dogs]\nhand = \"/bin/shep-hand\"\n",
+    );
+    let rows = build_rows(
+        &index_of(&[row("hand", "logs", "0.1.0")]),
+        &home.paths,
+        &config,
+    );
+    assert_eq!(state_of(&rows, "hand"), "adopted");
 }
 
 fn version_of(rows: &[CatalogueRow], name: &str) -> String {

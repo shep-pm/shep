@@ -32,10 +32,10 @@ impl App {
     }
 
     /// Whether `row` has an install action here: the index names a source
-    /// shep can build, nothing is installed under that name yet, and the
+    /// shep can build, the dog has no install receipt, and the
     /// gate is open.
     pub(crate) fn can_install(&self, row: &CatalogueRow) -> bool {
-        row.state == DogState::NotInstalled
+        matches!(row.state, DogState::NotInstalled | DogState::Adopted)
             && row.dog.is_installable()
             && WriteAuthority::granted(self).is_some()
     }
@@ -43,7 +43,7 @@ impl App {
     /// Whether `row` has an upgrade action here: it is installed, its
     /// VERSION reads `a → b`, and the gate is open.
     pub(crate) fn can_upgrade(&self, row: &CatalogueRow) -> bool {
-        row.state != DogState::NotInstalled
+        matches!(row.state, DogState::Installed | DogState::Enabled)
             && row.is_behind()
             && WriteAuthority::granted(self).is_some()
     }

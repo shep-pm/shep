@@ -19,6 +19,8 @@ use crate::commands::dogs::{Job, Progress, Prompt, Reach, Step, run};
 use crate::exit::ExitCode;
 
 mod actions;
+#[cfg(all(test, unix))]
+mod session_tests;
 #[cfg(test)]
 mod tests;
 

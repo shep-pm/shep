@@ -39,6 +39,7 @@ mod install_depends;
 mod install_download;
 mod install_keep;
 mod install_ref;
+mod install_swap;
 mod receipt;
 mod remove;
 mod second_look;
@@ -73,6 +74,8 @@ mod install_depends_tests;
 mod install_download_tests;
 #[cfg(all(test, unix))]
 mod install_ref_tests;
+#[cfg(all(test, unix))]
+mod install_swap_tests;
 #[cfg(all(test, unix))]
 mod install_tests;
 #[cfg(all(test, unix))]
