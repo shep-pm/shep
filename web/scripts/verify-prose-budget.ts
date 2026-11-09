@@ -498,7 +498,9 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 2060 for #1593: the sentence saying a live `shep bleats` can
   // skip lines from a pty sheep when the shepherd falls behind. Required
   // content for a behaviour an operator can see, not prose to trim back out.
-  logs: 2085,
+  // Raised from 2085 for #1628: the sentence saying a repainted pty row that
+  // did not change is logged once. Same kind of required content.
+  logs: 2093,
   // Raised from 1690 on 2026-09-28 for "Naming your lambs": `lamb-label`
   // is a new message an app author has to be told about, not prose to trim
   // back out.
