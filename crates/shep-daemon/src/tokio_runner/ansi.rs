@@ -73,6 +73,10 @@ pub(super) struct AnsiLines<R> {
     cr_pending: bool,
     /// The line being written has a visible byte.
     line_has_text: bool,
+    /// A CSI just ended the row, and nothing has been drawn since. The `\n`
+    /// that follows ends that same screen row, as in `text ESC [ K \n`, so it
+    /// takes no slot of its own. Holds whether the row was written.
+    closed: Option<bool>,
     /// Bytes of the row being written that are not out yet. Never past
     /// [`SCREEN_ROW_BYTES`].
     row: Vec<u8>,
@@ -109,6 +113,7 @@ impl<R> AnsiLines<R> {
             state: State::Ground,
             cr_pending: false,
             line_has_text: false,
+            closed: None,
             row: Vec::new(),
             spilling: false,
             screen: VecDeque::new(),
@@ -129,7 +134,8 @@ impl<R> AnsiLines<R> {
     /// cursor now is.
     fn break_line(&mut self, text: &mut Vec<u8>) {
         if self.line_has_text {
-            self.end_row(text, true);
+            let written = self.end_row(text, true);
+            self.closed = Some(written);
         } else {
             self.row.clear();
         }
@@ -137,8 +143,9 @@ impl<R> AnsiLines<R> {
 
     /// Ends the row being written. A row that repeats the one it replaces is
     /// dropped. Every other row is written and kept. `line_end` is false for
-    /// a stream that stops mid-row, which owes that row no newline.
-    fn end_row(&mut self, text: &mut Vec<u8>, line_end: bool) {
+    /// a stream that stops mid-row, which owes that row no newline. Returns
+    /// whether the row was written.
+    fn end_row(&mut self, text: &mut Vec<u8>, line_end: bool) -> bool {
         let row = core::mem::take(&mut self.row);
         let spilled = core::mem::replace(&mut self.spilling, false);
         self.line_has_text = false;
@@ -178,6 +185,7 @@ impl<R> AnsiLines<R> {
         if self.replacing == 0 {
             self.blind = false;
         }
+        !repeat
     }
 
     /// Resolves a pending `\r` as a bare one.
@@ -298,7 +306,18 @@ impl<R> AnsiLines<R> {
             b'\r' => self.cr_pending = true,
             b'\n' => {
                 self.cr_pending = false;
-                self.end_row(text, true);
+                match self.closed.take() {
+                    // The row a CSI ended is this row. The log keeps the
+                    // newline it always had, but only beside a written row.
+                    Some(written) if self.row.is_empty() => {
+                        if written {
+                            text.push(b'\n');
+                        }
+                    }
+                    _ => {
+                        self.end_row(text, true);
+                    }
+                }
             }
             0x1b => {
                 self.settle_cr(text);
@@ -320,6 +339,7 @@ impl<R> AnsiLines<R> {
     /// [`SCREEN_ROW_BYTES`] goes out as it is read, so a run of bytes with no
     /// line end costs one read and never the whole run.
     fn push_byte(&mut self, byte: u8, text: &mut Vec<u8>) {
+        self.closed = None;
         self.row.push(byte);
         if self.row.len() < SCREEN_ROW_BYTES {
             return;
@@ -609,6 +629,29 @@ mod tests {
         assert_eq!(filtered(&[b"one\r\n \x1b[A\rone\r\n"]).await, "one\n");
         // A whitespace-only row a real newline ends is still a row.
         assert_eq!(filtered(&[b"a\n   \nb\n"]).await, "a\n   \nb\n");
+    }
+
+    #[tokio::test]
+    async fn a_row_ended_by_an_erase_and_a_newline_is_one_screen_row() {
+        // Each row is `text ESC [ K \n`: the erase ends it and the newline
+        // ends the same screen row, so `ESC [ 2 A` names these two rows.
+        assert_eq!(
+            filtered(&[b"a\x1b[K\nb\x1b[K\n\x1b[2Aa\x1b[K\nb\x1b[K\n"]).await,
+            "a\n\nb\n\n"
+        );
+        assert_eq!(
+            filtered(&[b"a\x1b[K\r\nb\x1b[K\r\n\x1b[2Aa\x1b[K\r\nb\x1b[K\r\n"]).await,
+            "a\n\nb\n\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_changed_row_after_an_erase_and_a_newline_is_written() {
+        // The first repainted row `b` replaces `a`, so it differs.
+        assert_eq!(
+            filtered(&[b"a\x1b[K\nb\x1b[K\n\x1b[2Ab\x1b[K\nc\x1b[K\n"]).await,
+            "a\n\nb\n\nb\n\nc\n\n"
+        );
     }
 
     #[tokio::test]
