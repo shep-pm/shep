@@ -3,6 +3,7 @@
 use core::pin::Pin;
 use core::task::{Context, Poll, ready};
 
+use std::collections::VecDeque;
 use std::io;
 
 use tokio::io::{AsyncRead, ReadBuf};
@@ -20,6 +21,18 @@ const STRING_LIMIT: usize = 4096;
 /// CSI final bytes that move the cursor or erase: each ends the line being
 /// written, since what follows overwrites or replaces it.
 const LINE_BREAKING_FINALS: &[u8] = b"ABCDEFGHJKXadef`";
+
+/// Rows the filter keeps, so a repaint can be compared against what it
+/// replaces.
+///
+/// A pty opens at [`super::pty::PTY_ROWS`] 50 and `shep attach` resizes it to
+/// the operator's terminal. Past this the oldest rows go, and a cursor-up
+/// reaching past what is kept writes every row it names.
+const SCREEN_ROWS: usize = 256;
+
+/// Bytes one kept row may hold: [`SCRATCH`] is what one read carries, and a
+/// row past it is not a screen row.
+const SCREEN_ROW_BYTES: usize = SCRATCH;
 
 /// Where the filter is inside an escape sequence.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -47,6 +60,9 @@ enum State {
 /// `\r` counts as one, and with a CSI that moves the cursor or erases ends a
 /// line that has text; `\r\n` becomes `\n`. The output is valid UTF-8 for
 /// `LineReader`, with `U+FFFD` for each invalid sequence.
+///
+/// A cursor-up CSI marks the rows after it as replacing the rows it moved
+/// over, and one that repeats what it replaces is not written again.
 pub(super) struct AnsiLines<R> {
     inner: R,
     state: State,
@@ -55,6 +71,21 @@ pub(super) struct AnsiLines<R> {
     cr_pending: bool,
     /// The line being written has a visible byte.
     line_has_text: bool,
+    /// Bytes of the row being written, until it ends.
+    row: Vec<u8>,
+    /// Rows written so far, oldest first, capped at [`SCREEN_ROWS`]. `None`
+    /// is one too long to keep, so a repaint against it is written.
+    screen: VecDeque<Option<Vec<u8>>>,
+    /// Rows ahead that replace the tail of [`Self::screen`], from a cursor-up.
+    /// Never past it unless [`Self::blind`] holds.
+    replacing: usize,
+    /// That window reaches past what is kept, so it names nothing to compare
+    /// against and every row in it is written.
+    blind: bool,
+    /// Digits of the CSI's first parameter, saturating.
+    csi_param: u32,
+    /// That parameter ended at `;`, so the digits after it are another's.
+    csi_closed: bool,
     /// Leading bytes of a character the last read cut short.
     carry: Vec<u8>,
     /// Filtered, valid UTF-8 not yet handed to the caller.
@@ -71,6 +102,12 @@ impl<R> AnsiLines<R> {
             state: State::Ground,
             cr_pending: false,
             line_has_text: false,
+            row: Vec::new(),
+            screen: VecDeque::new(),
+            replacing: 0,
+            blind: false,
+            csi_param: 0,
+            csi_closed: false,
             carry: Vec::new(),
             ready: Vec::new(),
             sent: 0,
@@ -82,8 +119,40 @@ impl<R> AnsiLines<R> {
     /// already ended.
     fn break_line(&mut self, text: &mut Vec<u8>) {
         if self.line_has_text {
+            self.end_row(text);
+        }
+    }
+
+    /// Ends the row being written. A row that repeats the one it replaces is
+    /// dropped; every other row is written and kept as a screen row.
+    fn end_row(&mut self, text: &mut Vec<u8>) {
+        let row = core::mem::take(&mut self.row);
+        self.line_has_text = false;
+        // `cursor_up` keeps `replacing` within `screen.len()` unless the
+        // window is blind, so the subtraction below cannot underflow.
+        let target = match self.replacing {
+            0 => None,
+            _ if self.blind => None,
+            n => Some(self.screen.len() - n),
+        };
+        let repeat = match target {
+            Some(i) => self.screen[i].as_deref() == Some(row.as_slice()),
+            None => false,
+        };
+        match (target, repeat) {
+            (Some(i), false) => self.screen[i] = kept(&row),
+            (Some(_), true) => {}
+            (None, _) => {
+                if self.screen.len() == SCREEN_ROWS {
+                    self.screen.pop_front();
+                }
+                self.screen.push_back(kept(&row));
+            }
+        }
+        self.replacing = self.replacing.saturating_sub(1);
+        if !repeat {
+            text.extend_from_slice(&row);
             text.push(b'\n');
-            self.line_has_text = false;
         }
     }
 
@@ -95,13 +164,29 @@ impl<R> AnsiLines<R> {
         }
     }
 
+    /// Marks the rows ahead as replacing the last `rows` kept rows.
+    ///
+    /// A window past what is kept is blind: it names rows the filter has no
+    /// copy of, so every row in it is written. It is bounded at
+    /// [`SCREEN_ROWS`] so one stray cursor-up cannot blind the filter for
+    /// good.
+    fn cursor_up(&mut self, rows: usize) {
+        let total = self.replacing.saturating_add(rows);
+        self.blind = total > self.screen.len();
+        self.replacing = total.min(SCREEN_ROWS);
+    }
+
     /// Feeds one byte through the state machine, appending plain bytes to
     /// `text`.
     fn step(&mut self, byte: u8, text: &mut Vec<u8>) {
         match self.state {
             State::Ground => self.ground(byte, text),
             State::Escape => match byte {
-                b'[' => self.state = State::Csi,
+                b'[' => {
+                    self.state = State::Csi;
+                    self.csi_param = 0;
+                    self.csi_closed = false;
+                }
                 b']' => {
                     self.state = State::Text {
                         bell_ends: true,
@@ -131,12 +216,27 @@ impl<R> AnsiLines<R> {
                 }
             },
             State::Csi => match byte {
-                0x20..=0x3f => {}
+                0x20..=0x3f => match byte {
+                    b'0'..=b'9' if !self.csi_closed => {
+                        self.csi_param = self
+                            .csi_param
+                            .saturating_mul(10)
+                            .saturating_add(u32::from(byte - b'0'));
+                    }
+                    b';' => self.csi_closed = true,
+                    _ => {}
+                },
                 0x40..=0x7e => {
                     self.state = State::Ground;
+                    let up = byte == b'A';
+                    // ECMA-48 reads an omitted or zero parameter as one.
+                    let rows = usize::try_from(self.csi_param.max(1)).unwrap_or(usize::MAX);
                     if LINE_BREAKING_FINALS.contains(&byte) {
                         self.settle_cr(text);
                         self.break_line(text);
+                    }
+                    if up {
+                        self.cursor_up(rows);
                     }
                 }
                 0x1b => self.state = State::Escape,
@@ -175,8 +275,7 @@ impl<R> AnsiLines<R> {
             b'\r' => self.cr_pending = true,
             b'\n' => {
                 self.cr_pending = false;
-                text.push(b'\n');
-                self.line_has_text = false;
+                self.end_row(text);
             }
             0x1b => {
                 self.settle_cr(text);
@@ -186,7 +285,7 @@ impl<R> AnsiLines<R> {
             0x00..=0x08 | 0x0b..=0x0c | 0x0e..=0x1a | 0x1c..=0x1f | 0x7f => {}
             _ => {
                 self.settle_cr(text);
-                text.push(byte);
+                self.row.push(byte);
                 if byte != b'\t' && byte != b' ' {
                     self.line_has_text = true;
                 }
@@ -229,6 +328,15 @@ impl<R> AnsiLines<R> {
     }
 }
 
+/// `row` as a kept screen row, or `None` when it is too long to keep.
+fn kept(row: &[u8]) -> Option<Vec<u8>> {
+    if row.len() <= SCREEN_ROW_BYTES {
+        Some(row.to_vec())
+    } else {
+        None
+    }
+}
+
 impl<R: AsyncRead + Unpin> AsyncRead for AnsiLines<R> {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -246,6 +354,10 @@ impl<R: AsyncRead + Unpin> AsyncRead for AnsiLines<R> {
             if read.filled().is_empty() {
                 this.eof = true;
                 this.settle_cr(&mut text);
+                // A last row with no line end goes out as it stands: no
+                // newline is owed to a stream that has none left.
+                text.extend_from_slice(&this.row);
+                this.row.clear();
             }
             for &byte in read.filled() {
                 this.step(byte, &mut text);
@@ -349,6 +461,14 @@ mod tests {
     #[tokio::test]
     async fn a_redraw_leaves_no_blank_line_between_its_parts() {
         assert_eq!(filtered(&[b"a\n\r\x1b[Kb\n"]).await, "a\nb\n");
+    }
+
+    #[tokio::test]
+    async fn a_repainted_frame_identical_to_the_last_writes_nothing() {
+        assert_eq!(
+            filtered(&[b"one\ntwo\n\x1b[2Aone\ntwo\n"]).await,
+            "one\ntwo\n"
+        );
     }
 
     #[tokio::test]
