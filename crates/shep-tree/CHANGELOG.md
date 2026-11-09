@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-11-09
+
+### Added
+
+- End a job's members when its last handle closes
+
+
 ## [0.25.0] - 2026-11-06
 
 
