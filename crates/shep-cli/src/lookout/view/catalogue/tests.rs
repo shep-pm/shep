@@ -217,6 +217,7 @@ fn an_entry_shows_what_the_index_says_about_the_dog() {
     for expected in [
         "alpha watches the flock and says so.",
         "https://github.com/shep-pm/shep-alpha",
+        "package shep-alpha",
         "license MIT",
         "kind cargo 0.2.4",
         "state installed",

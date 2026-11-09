@@ -239,6 +239,7 @@ fn draw_entry(app: &App, row: &CatalogueRow, area: Rect, buffer: &mut Buffer) {
     let value_width = usize::from(area.width.saturating_sub(GUTTER + LABEL_WIDTH));
     let mut fields: Vec<(&str, Vec<String>)> = vec![
         ("description", vec![row.dog.description.clone()]),
+        ("package", vec![row.dog.package.clone()]),
         ("repo", vec![row.dog.repo.clone()]),
         ("license", vec![row.dog.license.clone()]),
         ("kind", vec![kind_of(&row.dog.source)]),
